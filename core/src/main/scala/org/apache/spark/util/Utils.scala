@@ -530,7 +530,12 @@ private[spark] object Utils extends Logging {
       if (address.isLoopbackAddress) {
         // Address resolves to something like 127.0.1.1, which happens on Debian; try to find
         // a better address using the local network interfaces
-        for (ni <- NetworkInterface.getNetworkInterfaces) {
+        // getNetworkInterfaces returns ifs in reverse order compared to ifconfig output order
+        // on unix-like system. On windows, it returns in index order.
+        // It's more proper to pick ip address following system output order.
+        val activeNetworkIFs = NetworkInterface.getNetworkInterfaces.toList
+        val reOrderedNetworkIFs = if (isWindows) activeNetworkIFs else activeNetworkIFs.reverse
+        for (ni <- reOrderedNetworkIFs) {
           for (addr <- ni.getInetAddresses if !addr.isLinkLocalAddress &&
                !addr.isLoopbackAddress && addr.isInstanceOf[Inet4Address]) {
             // We've found an address that looks reasonable!
@@ -1377,15 +1382,15 @@ private[spark] object Utils extends Logging {
   }
 
   /**
-   * Default number of retries in binding to a port.
+   * Default maximum number of retries when binding to a port before giving up.
    */
   val portMaxRetries: Int = {
     if (sys.props.contains("spark.testing")) {
       // Set a higher number of retries for tests...
-      sys.props.get("spark.ports.maxRetries").map(_.toInt).getOrElse(100)
+      sys.props.get("spark.port.maxRetries").map(_.toInt).getOrElse(100)
     } else {
       Option(SparkEnv.get)
-        .flatMap(_.conf.getOption("spark.ports.maxRetries"))
+        .flatMap(_.conf.getOption("spark.port.maxRetries"))
         .map(_.toInt)
         .getOrElse(16)
     }
