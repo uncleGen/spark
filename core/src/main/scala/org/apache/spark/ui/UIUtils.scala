@@ -21,7 +21,9 @@ import java.text.SimpleDateFormat
 import java.util.{Locale, Date}
 
 import scala.xml.Node
+
 import org.apache.spark.Logging
+import org.apache.spark.SparkContext
 
 /** Utility functions for generating XML pages with spark content. */
 private[spark] object UIUtils extends Logging {
@@ -169,6 +171,7 @@ private[spark] object UIUtils extends Logging {
       refreshInterval: Option[Int] = None): Seq[Node] = {
 
     val appName = activeTab.appName
+    val shortAppName = if (appName.length < 36) appName else appName.take(32) + "..."
     val header = activeTab.headerTabs.map { tab =>
       <li class={if (tab == activeTab) "active" else ""}>
         <a href={prependBaseUri(activeTab.basePath, "/" + tab.prefix)}>{tab.name}</a>
@@ -187,7 +190,9 @@ private[spark] object UIUtils extends Logging {
               <img src={prependBaseUri("/static/spark-logo-77x50px-hd.png")} />
             </a>
             <ul class="nav">{header}</ul>
-            <p class="navbar-text pull-right"><strong>{appName}</strong> application UI</p>
+            <p class="navbar-text pull-right">
+              <strong title={appName}>{shortAppName}</strong> application UI
+            </p>
           </div>
         </div>
         <div class="container-fluid">
@@ -199,6 +204,11 @@ private[spark] object UIUtils extends Logging {
             </div>
           </div>
           {content}
+        </div>
+        <div id="footer">
+          <div class="container-fluid">
+            <p class="muted credit">Spark {SparkContext.SPARK_VERSION}</p>
+          </div>
         </div>
       </body>
     </html>
@@ -216,13 +226,20 @@ private[spark] object UIUtils extends Logging {
           <div class="row-fluid">
             <div class="span12">
               <h3 style="vertical-align: middle; display: inline-block;">
-                <img src={prependBaseUri("/static/spark-logo-77x50px-hd.png")}
-                     style="margin-right: 15px;" />
+                <a style="text-decoration: none" href={prependBaseUri("/")}>
+                  <img src={prependBaseUri("/static/spark-logo-77x50px-hd.png")}
+                       style="margin-right: 15px;" />
+                </a>
                 {title}
               </h3>
             </div>
           </div>
           {content}
+        </div>
+        <div id="footer">
+          <div class="container-fluid">
+            <p class="muted credit">Spark {SparkContext.SPARK_VERSION}</p>
+          </div>
         </div>
       </body>
     </html>

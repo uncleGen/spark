@@ -10,7 +10,7 @@ In addition to running on the Mesos or YARN cluster managers, Spark also provide
 
 # Installing Spark Standalone to a Cluster
 
-To install Spark Standalone mode, you simply place a compiled version of Spark on each node on the cluster. You can obtain pre-built versions of Spark with each release or [build it yourself](index.html#building).
+To install Spark Standalone mode, you simply place a compiled version of Spark on each node on the cluster. You can obtain pre-built versions of Spark with each release or [build it yourself](building-with-maven.html).
 
 # Starting a Cluster Manually
 
@@ -242,20 +242,31 @@ To run an interactive Spark shell against the cluster, run the following command
 
     ./bin/spark-shell --master spark://IP:PORT
 
-You can also pass an option `--cores <numCores>` to control the number of cores that spark-shell uses on the cluster.
+You can also pass an option `--total-executor-cores <numCores>` to control the number of cores that spark-shell uses on the cluster.
 
-# Launching Compiled Spark Applications
+# Launching Spark Applications
 
 The [`spark-submit` script](submitting-applications.html) provides the most straightforward way to
 submit a compiled Spark application to the cluster. For standalone clusters, Spark currently
-only supports deploying the driver inside the client process that is submitting the application
-(`client` deploy mode).
+supports two deploy modes. In `client` mode, the driver is launched in the same process as the
+client that submits the application. In `cluster` mode, however, the driver is launched from one
+of the Worker processes inside the cluster, and the client process exits as soon as it fulfills
+its responsibility of submitting the application without waiting for the application to finish.
 
 If your application is launched through Spark submit, then the application jar is automatically
 distributed to all worker nodes. For any additional jars that your application depends on, you
 should specify them through the `--jars` flag using comma as a delimiter (e.g. `--jars jar1,jar2`).
 To control the application's configuration or execution environment, see
 [Spark Configuration](configuration.html).
+
+Additionally, standalone `cluster` mode supports restarting your application automatically if it
+exited with non-zero exit code. To use this feature, you may pass in the `--supervise` flag to
+`spark-submit` when launching your application. Then, if you wish to kill an application that is
+failing repeatedly, you may do so through:
+
+    ./bin/spark-class org.apache.spark.deploy.Client kill <master url> <driver ID>
+
+You can find the driver ID through the standalone Master web UI at `http://<master url>:8080`.
 
 # Resource Scheduling
 
@@ -307,7 +318,7 @@ tight firewall settings. For a complete list of ports to configure, see the
 
 By default, standalone scheduling clusters are resilient to Worker failures (insofar as Spark itself is resilient to losing work by moving it to other workers). However, the scheduler uses a Master to make scheduling decisions, and this (by default) creates a single point of failure: if the Master crashes, no new applications can be created. In order to circumvent this, we have two high availability schemes, detailed below.
 
-# Standby Masters with ZooKeeper
+## Standby Masters with ZooKeeper
 
 **Overview**
 
@@ -347,7 +358,7 @@ There's an important distinction to be made between "registering with a Master" 
 
 Due to this property, new Masters can be created at any time, and the only thing you need to worry about is that _new_ applications and Workers can find it to register with in case it becomes the leader. Once registered, you're taken care of.
 
-# Single-Node Recovery with Local File System
+## Single-Node Recovery with Local File System
 
 **Overview**
 
