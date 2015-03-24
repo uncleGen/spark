@@ -53,8 +53,7 @@ private[spark] object CoarseGrainedClusterMessages {
   case class RegisterServer(
       executorId: String,
       hostPort: String,
-      cores: Int,
-      containerId: String)
+      cores: Int)
     extends CoarseGrainedClusterMessage {
     Utils.checkHostPort(hostPort, "Expected host port")
   }

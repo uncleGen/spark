@@ -116,12 +116,12 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
           makeOffers()
         }
 
-      case RegisterServer(executorId, hostPort, cores, containerId) =>
+      case RegisterServer(executorId, hostPort, cores) =>
         val (host, _) = Utils.parseHostPort(hostPort)
         CoarseGrainedSchedulerBackend.this.synchronized {
           val serverId = psServerManager.newServerId()
           val serverData = new ServerData(serverId, sender, sender.path.address, host, cores)
-          psServerManager.addPSServer(executorId, hostPort, containerId, serverData)
+          psServerManager.addPSServer(executorId, hostPort, serverData)
         }
         sender ! RegisteredServer(serverId)
         notifyAllExecutor(serverData)
