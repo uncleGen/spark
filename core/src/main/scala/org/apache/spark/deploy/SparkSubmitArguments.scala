@@ -34,6 +34,8 @@ private[spark] class SparkSubmitArguments(args: Seq[String], env: Map[String, St
   var deployMode: String = null
   var executorMemory: String = null
   var executorCores: String = null
+  var psServerMemory: String = null
+  var psServerCores: String = null
   var totalExecutorCores: String = null
   var propertiesFile: String = null
   var driverMemory: String = null
@@ -42,6 +44,7 @@ private[spark] class SparkSubmitArguments(args: Seq[String], env: Map[String, St
   var driverExtraJavaOptions: String = null
   var queue: String = null
   var numExecutors: String = null
+  var numPSServers: String = null
   var files: String = null
   var archives: String = null
   var mainClass: String = null
@@ -52,6 +55,7 @@ private[spark] class SparkSubmitArguments(args: Seq[String], env: Map[String, St
   var packages: String = null
   var repositories: String = null
   var ivyRepoPath: String = null
+  var enablePS: Boolean = false
   var verbose: Boolean = false
   var isPython: Boolean = false
   var pyFiles: String = null
@@ -311,6 +315,18 @@ private[spark] class SparkSubmitArguments(args: Seq[String], env: Map[String, St
         deployMode = value
         parse(tail)
 
+      case ("--num-servers") :: value :: tail =>
+        numPSServers = value
+        parse(tail)
+
+      case ("--server-cores") :: value :: tail =>
+        psServerCores = value
+        parse(tail)
+
+      case ("--server-memory") :: value :: tail =>
+        psServerMemory = value
+        parse(tail)
+
       case ("--num-executors") :: value :: tail =>
         numExecutors = value
         parse(tail)
@@ -349,6 +365,10 @@ private[spark] class SparkSubmitArguments(args: Seq[String], env: Map[String, St
 
       case ("--properties-file") :: value :: tail =>
         propertiesFile = value
+        parse(tail)
+
+      case ("--enablePS") :: tail =>
+        enablePS = true
         parse(tail)
 
       case ("--kill") :: value :: tail =>

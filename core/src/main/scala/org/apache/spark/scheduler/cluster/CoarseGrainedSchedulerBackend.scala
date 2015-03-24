@@ -31,6 +31,7 @@ import org.apache.spark.{ExecutorAllocationClient, Logging, SparkEnv, SparkExcep
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.util.{ActorLogReceive, SerializableBuffer, AkkaUtils, Utils}
+import org.apache.spark.ps.{ServerData, PSServerManager}
 
 /**
  * A scheduler backend that waits for coarse grained executors to connect to it through Akka.
@@ -67,6 +68,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
   private var numPendingExecutors = 0
 
   private val listenerBus = scheduler.sc.listenerBus
+
+  private val psServerManager = new PSServerManager
 
   // Executors we have requested the cluster manager to kill that have not died yet
   private val executorsPendingToRemove = new HashSet[String]
@@ -112,6 +115,16 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
             SparkListenerExecutorAdded(System.currentTimeMillis(), executorId, data))
           makeOffers()
         }
+
+      case RegisterServer(executorId, hostPort, cores, containerId) =>
+        val (host, _) = Utils.parseHostPort(hostPort)
+        CoarseGrainedSchedulerBackend.this.synchronized {
+          val serverId = psServerManager.newServerId()
+          val serverData = new ServerData(serverId, sender, sender.path.address, host, cores)
+          psServerManager.addPSServer(executorId, hostPort, containerId, serverData)
+        }
+        sender ! RegisteredServer(serverId)
+        notifyAllExecutor(serverData)
 
       case StatusUpdate(executorId, taskId, state, data) =>
         scheduler.statusUpdate(taskId, state, data.value)
@@ -264,6 +277,12 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
       case e: Exception =>
         throw new SparkException("Error stopping standalone scheduler's driver actor", e)
     }
+  }
+
+  def notifyAllExecutor(serverData: ServerData): Unit = {
+    this.executorDataMap.foreach(e => {
+      e._2.executorActor ! AddNewPSServer(serverData)
+    })
   }
 
   override def reviveOffers() {

@@ -224,7 +224,8 @@ private[spark] class ApplicationMaster(
         .map { address => s"${address}${HistoryServer.UI_PATH_PREFIX}/${appId}" }
         .getOrElse("")
 
-    allocator = client.register(yarnConf,
+    allocator = client.register(args.enablePS,
+      yarnConf,
       if (sc != null) sc.getConf else sparkConf,
       if (sc != null) sc.preferredNodeLocationData else Map(),
       uiAddress,

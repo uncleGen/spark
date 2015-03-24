@@ -1447,6 +1447,33 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    * flag specifies whether the scheduler can run the computation on the driver rather than
    * shipping it out to the cluster, for short actions like first().
    */
+  def runJobWithPS[T, U: ClassTag](
+      rdd: RDD[T],
+      func: (TaskContext, Iterator[T]) => U,
+      partitions: Seq[Int],
+      allowLocal: Boolean,
+      resultHandler: (Int, U) => Unit) {
+    if (stopped) {
+      throw new IllegalStateException("SparkContext has been shutdown")
+    }
+    val callSite = getCallSite
+    val cleanedFunc = clean(func)
+    logInfo("Starting job: " + callSite.shortForm)
+    if (conf.getBoolean("spark.logLineage", false)) {
+      logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
+    }
+    dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, allowLocal,
+      resultHandler, localProperties.get)
+    progressBar.foreach(_.finishAll())
+    rdd.doCheckpoint()
+  }
+
+  /**
+   * Run a function on a given set of partitions in an RDD and pass the results to the given
+   * handler function. This is the main entry point for all actions in Spark. The allowLocal
+   * flag specifies whether the scheduler can run the computation on the driver rather than
+   * shipping it out to the cluster, for short actions like first().
+   */
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
       func: (TaskContext, Iterator[T]) => U,

@@ -21,6 +21,8 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{SerializableBuffer, Utils}
+import scala.Predef._
+import org.apache.spark.ps.ServerData
 
 private[spark] sealed trait CoarseGrainedClusterMessage extends Serializable
 
@@ -48,8 +50,21 @@ private[spark] object CoarseGrainedClusterMessages {
     Utils.checkHostPort(hostPort, "Expected host port")
   }
 
+  case class RegisterServer(
+      executorId: String,
+      hostPort: String,
+      cores: Int,
+      containerId: String)
+    extends CoarseGrainedClusterMessage {
+    Utils.checkHostPort(hostPort, "Expected host port")
+  }
+
   case class StatusUpdate(executorId: String, taskId: Long, state: TaskState,
     data: SerializableBuffer) extends CoarseGrainedClusterMessage
+
+  case class RegisteredServer(serverId: Long) extends CoarseGrainedClusterMessage
+
+  case class AddNewPSServer(serverData: ServerData) extends CoarseGrainedClusterMessage
 
   object StatusUpdate {
     /** Alternate factory method that takes a ByteBuffer directly for the data field */

@@ -20,7 +20,7 @@ package org.apache.spark.executor
 import java.net.URL
 import java.nio.ByteBuffer
 
-import scala.collection.mutable
+import scala.collection.mutable._
 import scala.concurrent.Await
 
 import akka.actor.{Actor, ActorSelection, Props}
@@ -35,6 +35,8 @@ import org.apache.spark.scheduler.TaskDescription
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.util.{ActorLogReceive, AkkaUtils, SignalLogger, Utils}
 
+import org.apache.spark.ps.ServerData
+
 private[spark] class CoarseGrainedExecutorBackend(
     driverUrl: String,
     executorId: String,
@@ -48,6 +50,7 @@ private[spark] class CoarseGrainedExecutorBackend(
 
   var executor: Executor = null
   var driver: ActorSelection = null
+  val psServers = new HashMap[Long, ServerData]()
 
   override def preStart() {
     logInfo("Connecting to driver: " + driverUrl)
@@ -71,6 +74,10 @@ private[spark] class CoarseGrainedExecutorBackend(
     case RegisterExecutorFailed(message) =>
       logError("Slave registration failed: " + message)
       System.exit(1)
+
+    case AddNewPSServer(serverData) =>
+      val serverId = serverData.serverId
+      psServers(serverId) = serverData
 
     case LaunchTask(data) =>
       if (executor == null) {
