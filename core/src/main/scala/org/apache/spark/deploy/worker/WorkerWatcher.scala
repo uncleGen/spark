@@ -48,13 +48,13 @@ private[spark] class WorkerWatcher(workerUrl: String)
   private val expectedHostPort = AddressFromURIString(workerUrl).hostPort
   private def isWorker(address: Address) = address.hostPort == expectedHostPort
 
-  def exitNonZero() = if (isTesting) isShutDown = true else System.exit(-1)
+  private def exitNonZero() = if (isTesting) isShutDown = true else System.exit(-1)
 
   override def receiveWithLogging = {
     case AssociatedEvent(localAddress, remoteAddress, inbound) if isWorker(remoteAddress) =>
       logInfo(s"Successfully connected to $workerUrl")
 
-    case AssociationErrorEvent(cause, localAddress, remoteAddress, inbound)
+    case AssociationErrorEvent(cause, localAddress, remoteAddress, inbound, _)
         if isWorker(remoteAddress) =>
       // These logs may not be seen if the worker (and associated pipe) has died
       logError(s"Could not initialize connection to worker $workerUrl. Exiting.")
