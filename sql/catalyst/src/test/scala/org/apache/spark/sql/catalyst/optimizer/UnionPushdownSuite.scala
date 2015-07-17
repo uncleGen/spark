@@ -17,31 +17,30 @@
 
 package org.apache.spark.sql.catalyst.optimizer
 
-import org.apache.spark.sql.catalyst.analysis
 import org.apache.spark.sql.catalyst.analysis.EliminateSubQueries
+import org.apache.spark.sql.catalyst.plans.PlanTest
 import org.apache.spark.sql.catalyst.plans.logical._
-import org.apache.spark.sql.catalyst.plans.{PlanTest, LeftOuter, RightOuter}
 import org.apache.spark.sql.catalyst.rules._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.dsl.expressions._
 
-class UnionPushdownSuite extends PlanTest {
+class UnionPushDownSuite extends PlanTest {
   object Optimize extends RuleExecutor[LogicalPlan] {
     val batches =
       Batch("Subqueries", Once,
         EliminateSubQueries) ::
       Batch("Union Pushdown", Once,
-        UnionPushdown) :: Nil
+        UnionPushDown) :: Nil
   }
 
-  val testRelation =  LocalRelation('a.int, 'b.int, 'c.int)
-  val testRelation2 =  LocalRelation('d.int, 'e.int, 'f.int)
+  val testRelation = LocalRelation('a.int, 'b.int, 'c.int)
+  val testRelation2 = LocalRelation('d.int, 'e.int, 'f.int)
   val testUnion = Union(testRelation, testRelation2)
 
   test("union: filter to each side") {
     val query = testUnion.where('a === 1)
 
-    val optimized = Optimize(query.analyze)
+    val optimized = Optimize.execute(query.analyze)
 
     val correctAnswer =
       Union(testRelation.where('a === 1), testRelation2.where('d === 1)).analyze
@@ -52,7 +51,7 @@ class UnionPushdownSuite extends PlanTest {
   test("union: project to each side") {
     val query = testUnion.select('b)
 
-    val optimized = Optimize(query.analyze)
+    val optimized = Optimize.execute(query.analyze)
 
     val correctAnswer =
       Union(testRelation.select('b), testRelation2.select('e)).analyze

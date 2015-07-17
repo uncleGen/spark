@@ -15,10 +15,14 @@
 # limitations under the License.
 #
 
+import sys
 import numpy as np
 import warnings
 
-from pyspark.mllib.common import callMLlibFunc, JavaModelWrapper, inherit_doc
+if sys.version > '3':
+    xrange = range
+
+from pyspark.mllib.common import callMLlibFunc, inherit_doc
 from pyspark.mllib.linalg import Vectors, SparseVector, _convert_to_vector
 
 
@@ -94,22 +98,16 @@ class MLUtils(object):
         >>> from pyspark.mllib.util import MLUtils
         >>> from pyspark.mllib.regression import LabeledPoint
         >>> tempFile = NamedTemporaryFile(delete=True)
-        >>> tempFile.write("+1 1:1.0 3:2.0 5:3.0\\n-1\\n-1 2:4.0 4:5.0 6:6.0")
+        >>> _ = tempFile.write(b"+1 1:1.0 3:2.0 5:3.0\\n-1\\n-1 2:4.0 4:5.0 6:6.0")
         >>> tempFile.flush()
         >>> examples = MLUtils.loadLibSVMFile(sc, tempFile.name).collect()
         >>> tempFile.close()
-        >>> type(examples[0]) == LabeledPoint
-        True
-        >>> print examples[0]
-        (1.0,(6,[0,2,4],[1.0,2.0,3.0]))
-        >>> type(examples[1]) == LabeledPoint
-        True
-        >>> print examples[1]
-        (-1.0,(6,[],[]))
-        >>> type(examples[2]) == LabeledPoint
-        True
-        >>> print examples[2]
-        (-1.0,(6,[1,3,5],[4.0,5.0,6.0]))
+        >>> examples[0]
+        LabeledPoint(1.0, (6,[0,2,4],[1.0,2.0,3.0]))
+        >>> examples[1]
+        LabeledPoint(-1.0, (6,[],[]))
+        >>> examples[2]
+        LabeledPoint(-1.0, (6,[1,3,5],[4.0,5.0,6.0]))
         """
         from pyspark.mllib.regression import LabeledPoint
         if multiclass is not None:
@@ -170,6 +168,28 @@ class MLUtils(object):
         """
         minPartitions = minPartitions or min(sc.defaultParallelism, 2)
         return callMLlibFunc("loadLabeledPoints", sc, path, minPartitions)
+
+    @staticmethod
+    def appendBias(data):
+        """
+        Returns a new vector with `1.0` (bias) appended to
+        the end of the input vector.
+        """
+        vec = _convert_to_vector(data)
+        if isinstance(vec, SparseVector):
+            newIndices = np.append(vec.indices, len(vec))
+            newValues = np.append(vec.values, 1.0)
+            return SparseVector(len(vec) + 1, newIndices, newValues)
+        else:
+            return _convert_to_vector(np.append(vec.toArray(), 1.0))
+
+    @staticmethod
+    def loadVectors(sc, path):
+        """
+        Loads vectors saved using `RDD[Vector].saveAsTextFile`
+        with the default number of partitions.
+        """
+        return callMLlibFunc("loadVectors", sc, path)
 
 
 class Saveable(object):
@@ -257,6 +277,41 @@ class JavaLoader(Loader):
     def load(cls, sc, path):
         java_model = cls._load_java(sc, path)
         return cls(java_model)
+
+
+class LinearDataGenerator(object):
+    """Utils for generating linear data"""
+
+    @staticmethod
+    def generateLinearInput(intercept, weights, xMean, xVariance,
+                            nPoints, seed, eps):
+        """
+        :param: intercept bias factor, the term c in X'w + c
+        :param: weights   feature vector, the term w in X'w + c
+        :param: xMean     Point around which the data X is centered.
+        :param: xVariance Variance of the given data
+        :param: nPoints   Number of points to be generated
+        :param: seed      Random Seed
+        :param: eps       Used to scale the noise. If eps is set high,
+                          the amount of gaussian noise added is more.
+        Returns a list of LabeledPoints of length nPoints
+        """
+        weights = [float(weight) for weight in weights]
+        xMean = [float(mean) for mean in xMean]
+        xVariance = [float(var) for var in xVariance]
+        return list(callMLlibFunc(
+            "generateLinearInputWrapper", float(intercept), weights, xMean,
+            xVariance, int(nPoints), int(seed), float(eps)))
+
+    @staticmethod
+    def generateLinearRDD(sc, nexamples, nfeatures, eps,
+                          nParts=2, intercept=0.0):
+        """
+        Generate a RDD of LabeledPoints.
+        """
+        return callMLlibFunc(
+            "generateLinearRDDWrapper", sc, int(nexamples), int(nfeatures),
+            float(eps), int(nParts), float(intercept))
 
 
 def _test():

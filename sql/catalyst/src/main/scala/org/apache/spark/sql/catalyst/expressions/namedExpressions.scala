@@ -17,10 +17,11 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
-import org.apache.spark.sql.catalyst.trees
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.UnresolvedAttribute
 import org.apache.spark.sql.catalyst.errors.TreeNodeException
-import org.apache.spark.sql.catalyst.trees.LeafNode
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedExpressionCode}
+import org.apache.spark.sql.catalyst.trees
 import org.apache.spark.sql.types._
 
 object NamedExpression {
@@ -36,8 +37,13 @@ object NamedExpression {
  */
 case class ExprId(id: Long)
 
-abstract class NamedExpression extends Expression {
-  self: Product =>
+/**
+ * An [[Expression]] that is named.
+ */
+trait NamedExpression extends Expression { self: Product =>
+
+  /** We should never fold named expressions in order to not remove the alias. */
+  override def foldable: Boolean = false
 
   def name: String
   def exprId: ExprId
@@ -77,8 +83,7 @@ abstract class NamedExpression extends Expression {
     }
 }
 
-abstract class Attribute extends NamedExpression {
-  self: Product =>
+abstract class Attribute extends LeafExpression with NamedExpression { self: Product =>
 
   override def references: AttributeSet = AttributeSet(this)
 
@@ -86,7 +91,7 @@ abstract class Attribute extends NamedExpression {
   def withQualifiers(newQualifiers: Seq[String]): Attribute
   def withName(newName: String): Attribute
 
-  def toAttribute: Attribute = this
+  override def toAttribute: Attribute = this
   def newInstance(): Attribute
 
 }
@@ -109,11 +114,15 @@ case class Alias(child: Expression, name: String)(
     val exprId: ExprId = NamedExpression.newExprId,
     val qualifiers: Seq[String] = Nil,
     val explicitMetadata: Option[Metadata] = None)
-  extends NamedExpression with trees.UnaryNode[Expression] {
+  extends UnaryExpression with NamedExpression {
 
-  override type EvaluatedType = Any
+  // Alias(Generator, xx) need to be transformed into Generate(generator, ...)
+  override lazy val resolved =
+    childrenResolved && checkInputDataTypes().isSuccess && !child.isInstanceOf[Generator]
 
-  override def eval(input: Row): Any = child.eval(input)
+  override def eval(input: InternalRow): Any = child.eval(input)
+
+  override def gen(ctx: CodeGenContext): GeneratedExpressionCode = child.gen(ctx)
 
   override def dataType: DataType = child.dataType
   override def nullable: Boolean = child.nullable
@@ -167,10 +176,21 @@ case class AttributeReference(
     nullable: Boolean = true,
     override val metadata: Metadata = Metadata.empty)(
     val exprId: ExprId = NamedExpression.newExprId,
-    val qualifiers: Seq[String] = Nil) extends Attribute with trees.LeafNode[Expression] {
+    val qualifiers: Seq[String] = Nil)
+  extends Attribute {
+
+  /**
+   * Returns true iff the expression id is the same for both attributes.
+   */
+  def sameRef(other: AttributeReference): Boolean = this.exprId == other.exprId
 
   override def equals(other: Any): Boolean = other match {
     case ar: AttributeReference => name == ar.name && exprId == ar.exprId && dataType == ar.dataType
+    case _ => false
+  }
+
+  override def semanticEquals(other: Expression): Boolean = other match {
+    case ar: AttributeReference => sameRef(ar)
     case _ => false
   }
 
@@ -217,7 +237,7 @@ case class AttributeReference(
   }
 
   // Unresolved attributes are transient at compile time and don't get evaluated during execution.
-  override def eval(input: Row = null): EvaluatedType =
+  override def eval(input: InternalRow = null): Any =
     throw new TreeNodeException(this, s"No function to evaluate expression. type: ${this.nodeName}")
 
   override def toString: String = s"$name#${exprId.id}$typeSuffix"
@@ -227,8 +247,7 @@ case class AttributeReference(
  * A place holder used when printing expressions without debugging information such as the
  * expression id or the unresolved indicator.
  */
-case class PrettyAttribute(name: String) extends Attribute with trees.LeafNode[Expression] {
-  type EvaluatedType = Any
+case class PrettyAttribute(name: String) extends Attribute {
 
   override def toString: String = name
 
@@ -240,12 +259,12 @@ case class PrettyAttribute(name: String) extends Attribute with trees.LeafNode[E
   override def withName(newName: String): Attribute = throw new UnsupportedOperationException
   override def qualifiers: Seq[String] = throw new UnsupportedOperationException
   override def exprId: ExprId = throw new UnsupportedOperationException
-  override def eval(input: Row): EvaluatedType = throw new UnsupportedOperationException
+  override def eval(input: InternalRow): Any = throw new UnsupportedOperationException
   override def nullable: Boolean = throw new UnsupportedOperationException
   override def dataType: DataType = NullType
 }
 
 object VirtualColumn {
   val groupingIdName: String = "grouping__id"
-  def newGroupingId: AttributeReference = AttributeReference(groupingIdName, IntegerType, false)()
+  val groupingIdAttribute: UnresolvedAttribute = UnresolvedAttribute(groupingIdName)
 }

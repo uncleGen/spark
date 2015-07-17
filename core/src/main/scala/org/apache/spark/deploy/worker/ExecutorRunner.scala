@@ -21,13 +21,14 @@ import java.io._
 
 import scala.collection.JavaConversions._
 
-import akka.actor.ActorRef
 import com.google.common.base.Charsets.UTF_8
 import com.google.common.io.Files
 
-import org.apache.spark.{SparkConf, Logging}
+import org.apache.spark.rpc.RpcEndpointRef
+import org.apache.spark.{SecurityManager, SparkConf, Logging}
 import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.deploy.DeployMessages.ExecutorStateChanged
+import org.apache.spark.util.Utils
 import org.apache.spark.util.logging.FileAppender
 
 /**
@@ -40,7 +41,7 @@ private[deploy] class ExecutorRunner(
     val appDesc: ApplicationDescription,
     val cores: Int,
     val memory: Int,
-    val worker: ActorRef,
+    val worker: RpcEndpointRef,
     val workerId: String,
     val host: String,
     val webUiPort: Int,
@@ -50,7 +51,7 @@ private[deploy] class ExecutorRunner(
     val workerUrl: String,
     conf: SparkConf,
     val appLocalDirs: Seq[String],
-    var state: ExecutorState.Value)
+    @volatile var state: ExecutorState.Value)
   extends Logging {
 
   private val fullId = appId + "/" + execId
@@ -61,7 +62,7 @@ private[deploy] class ExecutorRunner(
 
   // NOTE: This is now redundant with the automated shut-down enforced by the Executor. It might
   // make sense to remove this in the future.
-  private var shutdownHook: Thread = null
+  private var shutdownHook: AnyRef = null
 
   private[worker] def start() {
     workerThread = new Thread("ExecutorRunner for " + fullId) {
@@ -69,12 +70,7 @@ private[deploy] class ExecutorRunner(
     }
     workerThread.start()
     // Shutdown hook that kills actors on shutdown.
-    shutdownHook = new Thread() {
-      override def run() {
-        killProcess(Some("Worker shutting down"))
-      }
-    }
-    Runtime.getRuntime.addShutdownHook(shutdownHook)
+    shutdownHook = Utils.addShutdownHook { () => killProcess(Some("Worker shutting down")) }
   }
 
   /**
@@ -95,7 +91,7 @@ private[deploy] class ExecutorRunner(
       process.destroy()
       exitCode = Some(process.waitFor())
     }
-    worker ! ExecutorStateChanged(appId, execId, state, message, exitCode)
+    worker.send(ExecutorStateChanged(appId, execId, state, message, exitCode))
   }
 
   /** Stop this executor runner, including killing the process it launched */
@@ -106,7 +102,7 @@ private[deploy] class ExecutorRunner(
       workerThread = null
       state = ExecutorState.KILLED
       try {
-        Runtime.getRuntime.removeShutdownHook(shutdownHook)
+        Utils.removeShutdownHook(shutdownHook)
       } catch {
         case e: IllegalStateException => None
       }
@@ -129,8 +125,8 @@ private[deploy] class ExecutorRunner(
   private def fetchAndRunExecutor() {
     try {
       // Launch the process
-      val builder = CommandUtils.buildProcessBuilder(appDesc.command, memory,
-        sparkHome.getAbsolutePath, substituteVariables)
+      val builder = CommandUtils.buildProcessBuilder(appDesc.command, new SecurityManager(conf),
+        memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()
       logInfo("Launch command: " + command.mkString("\"", "\" \"", "\""))
 
@@ -163,7 +159,7 @@ private[deploy] class ExecutorRunner(
       val exitCode = process.waitFor()
       state = ExecutorState.EXITED
       val message = "Command exited with code " + exitCode
-      worker ! ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode))
+      worker.send(ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode)))
     } catch {
       case interrupted: InterruptedException => {
         logInfo("Runner thread for executor " + fullId + " interrupted")

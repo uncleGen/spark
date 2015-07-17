@@ -17,10 +17,14 @@
 
 package org.apache.spark.sql.sources
 
-import java.sql.{Timestamp, Date}
+import java.sql.{Date, Timestamp}
 
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
 
 class DefaultSource extends SimpleScanSource
 
@@ -35,10 +39,10 @@ class SimpleScanSource extends RelationProvider {
 case class SimpleScan(from: Int, to: Int)(@transient val sqlContext: SQLContext)
   extends BaseRelation with TableScan {
 
-  override def schema =
+  override def schema: StructType =
     StructType(StructField("i", IntegerType, nullable = false) :: Nil)
 
-  override def buildScan() = sqlContext.sparkContext.parallelize(from to to).map(Row(_))
+  override def buildScan(): RDD[Row] = sqlContext.sparkContext.parallelize(from to to).map(Row(_))
 }
 
 class AllDataTypesScanSource extends SchemaRelationProvider {
@@ -46,6 +50,10 @@ class AllDataTypesScanSource extends SchemaRelationProvider {
       sqlContext: SQLContext,
       parameters: Map[String, String],
       schema: StructType): BaseRelation = {
+    // Check that weird parameters are passed correctly.
+    parameters("option_with_underscores")
+    parameters("option.with.dots")
+
     AllDataTypesScan(parameters("from").toInt, parameters("TO").toInt, schema)(sqlContext)
   }
 }
@@ -57,12 +65,14 @@ case class AllDataTypesScan(
   extends BaseRelation
   with TableScan {
 
-  override def schema = userSpecifiedSchema
+  override def schema: StructType = userSpecifiedSchema
 
-  override def buildScan() = {
+  override def needConversion: Boolean = false
+
+  override def buildScan(): RDD[Row] = {
     sqlContext.sparkContext.parallelize(from to to).map { i =>
-      Row(
-        s"str_$i",
+      InternalRow(
+        UTF8String.fromString(s"str_$i"),
         s"str_$i".getBytes(),
         i % 2 == 0,
         i.toByte,
@@ -71,25 +81,26 @@ case class AllDataTypesScan(
         i.toLong,
         i.toFloat,
         i.toDouble,
-        new java.math.BigDecimal(i),
-        new java.math.BigDecimal(i),
-        new Date((i + 1) * 8640000),
-        new Timestamp(20000 + i),
-        s"varchar_$i",
+        Decimal(new java.math.BigDecimal(i)),
+        Decimal(new java.math.BigDecimal(i)),
+        DateTimeUtils.fromJavaDate(new Date(1970, 1, 1)),
+        DateTimeUtils.fromJavaTimestamp(new Timestamp(20000 + i)),
+        UTF8String.fromString(s"varchar_$i"),
         Seq(i, i + 1),
-        Seq(Map(s"str_$i" -> Row(i.toLong))),
-        Map(i -> i.toString),
-        Map(Map(s"str_$i" -> i.toFloat) -> Row(i.toLong)),
-        Row(i, i.toString),
-        Row(Seq(s"str_$i", s"str_${i + 1}"), Row(Seq(new Date((i + 2) * 8640000)))))
+        Seq(Map(UTF8String.fromString(s"str_$i") -> InternalRow(i.toLong))),
+        Map(i -> UTF8String.fromString(i.toString)),
+        Map(Map(UTF8String.fromString(s"str_$i") -> i.toFloat) -> InternalRow(i.toLong)),
+        InternalRow(i, UTF8String.fromString(i.toString)),
+        InternalRow(Seq(UTF8String.fromString(s"str_$i"), UTF8String.fromString(s"str_${i + 1}")),
+          InternalRow(Seq(DateTimeUtils.fromJavaDate(new Date(1970, 1, i + 1))))))
     }
   }
 }
 
 class TableScanSuite extends DataSourceTest {
-  import caseInsensisitiveContext._
+  import caseInsensitiveContext.sql
 
-  var tableWithSchemaExpected = (1 to 10).map { i =>
+  private lazy val tableWithSchemaExpected = (1 to 10).map { i =>
     Row(
       s"str_$i",
       s"str_$i",
@@ -102,7 +113,7 @@ class TableScanSuite extends DataSourceTest {
       i.toDouble,
       new java.math.BigDecimal(i),
       new java.math.BigDecimal(i),
-      new Date((i + 1) * 8640000),
+      new Date(1970, 1, 1),
       new Timestamp(20000 + i),
       s"varchar_$i",
       Seq(i, i + 1),
@@ -110,7 +121,7 @@ class TableScanSuite extends DataSourceTest {
       Map(i -> i.toString),
       Map(Map(s"str_$i" -> i.toFloat) -> Row(i.toLong)),
       Row(i, i.toString),
-      Row(Seq(s"str_$i", s"str_${i + 1}"), Row(Seq(new Date((i + 2) * 8640000)))))
+      Row(Seq(s"str_$i", s"str_${i + 1}"), Row(Seq(new Date(1970, 1, i + 1)))))
   }.toSeq
 
   before {
@@ -120,7 +131,9 @@ class TableScanSuite extends DataSourceTest {
         |USING org.apache.spark.sql.sources.SimpleScanSource
         |OPTIONS (
         |  From '1',
-        |  To '10'
+        |  To '10',
+        |  option_with_underscores 'someval',
+        |  option.with.dots 'someval'
         |)
       """.stripMargin)
 
@@ -151,7 +164,9 @@ class TableScanSuite extends DataSourceTest {
         |USING org.apache.spark.sql.sources.AllDataTypesScanSource
         |OPTIONS (
         |  From '1',
-        |  To '10'
+        |  To '10',
+        |  option_with_underscores 'someval',
+        |  option.with.dots 'someval'
         |)
       """.stripMargin)
   }
@@ -214,7 +229,7 @@ class TableScanSuite extends DataSourceTest {
       Nil
     )
 
-    assert(expectedSchema == table("tableWithSchema").schema)
+    assert(expectedSchema == caseInsensitiveContext.table("tableWithSchema").schema)
 
     checkAnswer(
       sql(
@@ -265,11 +280,11 @@ class TableScanSuite extends DataSourceTest {
 
   sqlTest(
     "SELECT structFieldComplex.Value.`value_(2)` FROM tableWithSchema",
-    (1 to 10).map(i => Row(Seq(new Date((i + 2) * 8640000)))).toSeq)
+    (1 to 10).map(i => Row(Seq(new Date(1970, 1, i + 1)))).toSeq)
 
   test("Caching")  {
     // Cached Query Execution
-    cacheTable("oneToTen")
+    caseInsensitiveContext.cacheTable("oneToTen")
     assertCached(sql("SELECT * FROM oneToTen"))
     checkAnswer(
       sql("SELECT * FROM oneToTen"),
@@ -296,7 +311,7 @@ class TableScanSuite extends DataSourceTest {
       (2 to 10).map(i => Row(i, i - 1)).toSeq)
 
     // Verify uncaching
-    uncacheTable("oneToTen")
+    caseInsensitiveContext.uncacheTable("oneToTen")
     assertCached(sql("SELECT * FROM oneToTen"), 0)
   }
 
@@ -353,7 +368,9 @@ class TableScanSuite extends DataSourceTest {
        |USING org.apache.spark.sql.sources.AllDataTypesScanSource
        |OPTIONS (
        |  from '1',
-       |  to '10'
+       |  to '10',
+       |  option_with_underscores 'someval',
+       |  option.with.dots 'someval'
        |)
        """.stripMargin)
 

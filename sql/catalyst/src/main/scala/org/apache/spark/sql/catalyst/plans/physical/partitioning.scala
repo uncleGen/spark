@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.catalyst.plans.physical
 
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors.TreeNodeException
-import org.apache.spark.sql.catalyst.expressions.{Expression, Row, SortOrder}
+import org.apache.spark.sql.catalyst.expressions.{Expression, SortOrder}
 import org.apache.spark.sql.types.{DataType, IntegerType}
 
 /**
@@ -94,6 +95,9 @@ sealed trait Partitioning {
    * only compatible if the `numPartitions` of them is the same.
    */
   def compatibleWith(other: Partitioning): Boolean
+
+  /** Returns the expressions that are used to key the partitioning. */
+  def keyExpressions: Seq[Expression]
 }
 
 case class UnknownPartitioning(numPartitions: Int) extends Partitioning {
@@ -106,6 +110,8 @@ case class UnknownPartitioning(numPartitions: Int) extends Partitioning {
     case UnknownPartitioning(_) => true
     case _ => false
   }
+
+  override def keyExpressions: Seq[Expression] = Nil
 }
 
 case object SinglePartition extends Partitioning {
@@ -117,6 +123,8 @@ case object SinglePartition extends Partitioning {
     case SinglePartition => true
     case _ => false
   }
+
+  override def keyExpressions: Seq[Expression] = Nil
 }
 
 case object BroadcastPartitioning extends Partitioning {
@@ -128,6 +136,8 @@ case object BroadcastPartitioning extends Partitioning {
     case SinglePartition => true
     case _ => false
   }
+
+  override def keyExpressions: Seq[Expression] = Nil
 }
 
 /**
@@ -158,7 +168,9 @@ case class HashPartitioning(expressions: Seq[Expression], numPartitions: Int)
     case _ => false
   }
 
-  override def eval(input: Row = null): EvaluatedType =
+  override def keyExpressions: Seq[Expression] = expressions
+
+  override def eval(input: InternalRow = null): Any =
     throw new TreeNodeException(this, s"No function to evaluate expression. type: ${this.nodeName}")
 }
 
@@ -200,6 +212,8 @@ case class RangePartitioning(ordering: Seq[SortOrder], numPartitions: Int)
     case _ => false
   }
 
-  override def eval(input: Row): EvaluatedType =
+  override def keyExpressions: Seq[Expression] = ordering.map(_.child)
+
+  override def eval(input: InternalRow): Any =
     throw new TreeNodeException(this, s"No function to evaluate expression. type: ${this.nodeName}")
 }

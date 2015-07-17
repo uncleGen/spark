@@ -25,11 +25,12 @@ import java.util.Map;
 
 import static org.apache.spark.launcher.CommandBuilderUtils.*;
 
-/**
+/** 
  * Launcher for Spark applications.
- * <p/>
+ * <p>
  * Use this class to start Spark applications programmatically. The class uses a builder pattern
  * to allow clients to configure the Spark application and launch it as a child process.
+ * </p>
  */
 public class SparkLauncher {
 
@@ -52,7 +53,7 @@ public class SparkLauncher {
   /** Configuration key for the executor VM options. */
   public static final String EXECUTOR_EXTRA_JAVA_OPTIONS = "spark.executor.extraJavaOptions";
   /** Configuration key for the executor native library path. */
-  public static final String EXECUTOR_EXTRA_LIBRARY_PATH = "spark.executor.extraLibraryOptions";
+  public static final String EXECUTOR_EXTRA_LIBRARY_PATH = "spark.executor.extraLibraryPath";
   /** Configuration key for the number of executor CPU cores. */
   public static final String EXECUTOR_CORES = "spark.executor.cores";
 

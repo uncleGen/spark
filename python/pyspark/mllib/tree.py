@@ -163,14 +163,16 @@ class DecisionTree(object):
         ...     LabeledPoint(1.0, [3.0])
         ... ]
         >>> model = DecisionTree.trainClassifier(sc.parallelize(data), 2, {})
-        >>> print model,  # it already has newline
+        >>> print(model)
         DecisionTreeModel classifier of depth 1 with 3 nodes
-        >>> print model.toDebugString(),  # it already has newline
+
+        >>> print(model.toDebugString())
         DecisionTreeModel classifier of depth 1 with 3 nodes
           If (feature 0 <= 0.0)
            Predict: 0.0
           Else (feature 0 > 0.0)
            Predict: 1.0
+        <BLANKLINE>
         >>> model.predict(array([1.0]))
         1.0
         >>> model.predict(array([0.0]))
@@ -297,7 +299,7 @@ class RandomForest(object):
                  1 internal node + 2 leaf nodes. (default: 4)
         :param maxBins: maximum number of bins used for splitting
                  features
-                 (default: 100)
+                 (default: 32)
         :param seed: Random seed for bootstrapping and choosing feature
                  subsets.
         :return: RandomForestModel that can be used for prediction
@@ -318,9 +320,10 @@ class RandomForest(object):
         3
         >>> model.totalNumNodes()
         7
-        >>> print model,
+        >>> print(model)
         TreeEnsembleModel classifier with 3 trees
-        >>> print model.toDebugString(),
+        <BLANKLINE>
+        >>> print(model.toDebugString())
         TreeEnsembleModel classifier with 3 trees
         <BLANKLINE>
           Tree 0:
@@ -335,6 +338,7 @@ class RandomForest(object):
              Predict: 0.0
             Else (feature 0 > 1.0)
              Predict: 1.0
+        <BLANKLINE>
         >>> model.predict([2.0])
         1.0
         >>> model.predict([0.0])
@@ -373,7 +377,7 @@ class RandomForest(object):
                  1 leaf node; depth 1 means 1 internal node + 2 leaf
                  nodes. (default: 4)
         :param maxBins: maximum number of bins used for splitting
-                 features (default: 100)
+                 features (default: 32)
         :param seed: Random seed for bootstrapping and choosing feature
                  subsets.
         :return: RandomForestModel that can be used for prediction
@@ -431,16 +435,17 @@ class GradientBoostedTrees(object):
 
     @classmethod
     def _train(cls, data, algo, categoricalFeaturesInfo,
-               loss, numIterations, learningRate, maxDepth):
+               loss, numIterations, learningRate, maxDepth, maxBins):
         first = data.first()
         assert isinstance(first, LabeledPoint), "the data should be RDD of LabeledPoint"
         model = callMLlibFunc("trainGradientBoostedTreesModel", data, algo, categoricalFeaturesInfo,
-                              loss, numIterations, learningRate, maxDepth)
+                              loss, numIterations, learningRate, maxDepth, maxBins)
         return GradientBoostedTreesModel(model)
 
     @classmethod
     def trainClassifier(cls, data, categoricalFeaturesInfo,
-                        loss="logLoss", numIterations=100, learningRate=0.1, maxDepth=3):
+                        loss="logLoss", numIterations=100, learningRate=0.1, maxDepth=3,
+                        maxBins=32):
         """
         Method to train a gradient-boosted trees model for
         classification.
@@ -463,6 +468,8 @@ class GradientBoostedTrees(object):
         :param maxDepth: Maximum depth of the tree. E.g., depth 0 means
                  1 leaf node; depth 1 means 1 internal node + 2 leaf
                  nodes. (default: 3)
+        :param maxBins: maximum number of bins used for splitting
+                 features (default: 32) DecisionTree requires maxBins >= max categories
         :return: GradientBoostedTreesModel that can be used for
                    prediction
 
@@ -478,13 +485,14 @@ class GradientBoostedTrees(object):
         ...     LabeledPoint(1.0, [3.0])
         ... ]
         >>>
-        >>> model = GradientBoostedTrees.trainClassifier(sc.parallelize(data), {})
+        >>> model = GradientBoostedTrees.trainClassifier(sc.parallelize(data), {}, numIterations=10)
         >>> model.numTrees()
-        100
+        10
         >>> model.totalNumNodes()
-        300
-        >>> print model,  # it already has newline
-        TreeEnsembleModel classifier with 100 trees
+        30
+        >>> print(model)  # it already has newline
+        TreeEnsembleModel classifier with 10 trees
+        <BLANKLINE>
         >>> model.predict([2.0])
         1.0
         >>> model.predict([0.0])
@@ -494,11 +502,12 @@ class GradientBoostedTrees(object):
         [1.0, 0.0]
         """
         return cls._train(data, "classification", categoricalFeaturesInfo,
-                          loss, numIterations, learningRate, maxDepth)
+                          loss, numIterations, learningRate, maxDepth, maxBins)
 
     @classmethod
     def trainRegressor(cls, data, categoricalFeaturesInfo,
-                       loss="leastSquaresError", numIterations=100, learningRate=0.1, maxDepth=3):
+                       loss="leastSquaresError", numIterations=100, learningRate=0.1, maxDepth=3,
+                       maxBins=32):
         """
         Method to train a gradient-boosted trees model for regression.
 
@@ -517,6 +526,8 @@ class GradientBoostedTrees(object):
                  contribution of each estimator. The learning rate
                  should be between in the interval (0, 1].
                  (default: 0.1)
+        :param maxBins: maximum number of bins used for splitting
+                 features (default: 32) DecisionTree requires maxBins >= max categories
         :param maxDepth: Maximum depth of the tree. E.g., depth 0 means
                  1 leaf node; depth 1 means 1 internal node + 2 leaf
                  nodes.  (default: 3)
@@ -536,11 +547,12 @@ class GradientBoostedTrees(object):
         ...     LabeledPoint(1.0, SparseVector(2, {1: 2.0}))
         ... ]
         >>>
-        >>> model = GradientBoostedTrees.trainRegressor(sc.parallelize(sparse_data), {})
+        >>> data = sc.parallelize(sparse_data)
+        >>> model = GradientBoostedTrees.trainRegressor(data, {}, numIterations=10)
         >>> model.numTrees()
-        100
+        10
         >>> model.totalNumNodes()
-        102
+        12
         >>> model.predict(SparseVector(2, {1: 1.0}))
         1.0
         >>> model.predict(SparseVector(2, {0: 1.0}))
@@ -550,7 +562,7 @@ class GradientBoostedTrees(object):
         [1.0, 0.0]
         """
         return cls._train(data, "regression", categoricalFeaturesInfo,
-                          loss, numIterations, learningRate, maxDepth)
+                          loss, numIterations, learningRate, maxDepth, maxBins)
 
 
 def _test():

@@ -17,7 +17,6 @@
 
 package org.apache.spark
 
-import org.scalatest.FunSuite
 import org.scalatest.concurrent.Timeouts._
 import org.scalatest.Matchers
 import org.scalatest.time.{Millis, Span}
@@ -28,7 +27,7 @@ class NotSerializableClass
 class NotSerializableExn(val notSer: NotSerializableClass) extends Throwable() {}
 
 
-class DistributedSuite extends FunSuite with Matchers with LocalSparkContext {
+class DistributedSuite extends SparkFunSuite with Matchers with LocalSparkContext {
 
   val clusterUrl = "local-cluster[2,1,512]"
 
@@ -77,7 +76,7 @@ class DistributedSuite extends FunSuite with Matchers with LocalSparkContext {
   }
 
   test("groupByKey where map output sizes exceed maxMbInFlight") {
-    val conf = new SparkConf().set("spark.reducer.maxMbInFlight", "1")
+    val conf = new SparkConf().set("spark.reducer.maxSizeInFlight", "1m")
     sc = new SparkContext(clusterUrl, "test", conf)
     // This data should be around 20 MB, so even with 4 mappers and 2 reducers, each map output
     // file should be about 2.5 MB
@@ -108,7 +107,9 @@ class DistributedSuite extends FunSuite with Matchers with LocalSparkContext {
     sc = new SparkContext(clusterUrl, "test")
     val accum = sc.accumulator(0)
     val thrown = intercept[SparkException] {
+      // scalastyle:off println
       sc.parallelize(1 to 10, 10).foreach(x => println(x / 0))
+      // scalastyle:on println
     }
     assert(thrown.getClass === classOf[SparkException])
     assert(thrown.getMessage.contains("failed 4 times"))

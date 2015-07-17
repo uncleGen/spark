@@ -146,7 +146,7 @@ class ExecutorRunnable(
       javaOpts ++= Utils.splitCommandString(opts).map(YarnSparkHadoopUtil.escapeForShell)
     }
     sys.props.get("spark.executor.extraLibraryPath").foreach { p =>
-      prefixEnv = Some(Utils.libraryPathEnvPrefix(Seq(p)))
+      prefixEnv = Some(Client.getClusterPath(sparkConf, Utils.libraryPathEnvPrefix(Seq(p))))
     }
 
     javaOpts += "-Djava.io.tmpdir=" +
@@ -195,7 +195,7 @@ class ExecutorRunnable(
     val userClassPath = Client.getUserClasspath(sparkConf).flatMap { uri =>
       val absPath =
         if (new File(uri.getPath()).isAbsolute()) {
-          uri.getPath()
+          Client.getClusterPath(sparkConf, uri.getPath())
         } else {
           Client.buildPath(Environment.PWD.$(), uri.getPath())
         }
@@ -277,7 +277,7 @@ class ExecutorRunnable(
   private def prepareEnvironment(container: Container): HashMap[String, String] = {
     val env = new HashMap[String, String]()
     val extraCp = sparkConf.getOption("spark.executor.extraClassPath")
-    Client.populateClasspath(null, yarnConf, sparkConf, env, extraCp)
+    Client.populateClasspath(null, yarnConf, sparkConf, env, false, extraCp)
 
     sparkConf.getExecutorEnv.foreach { case (key, value) =>
       // This assumes each executor environment variable set here is a path
@@ -290,12 +290,21 @@ class ExecutorRunnable(
       YarnSparkHadoopUtil.setEnvFromInputString(env, userEnvs)
     }
 
+    // lookup appropriate http scheme for container log urls
+    val yarnHttpPolicy = yarnConf.get(
+      YarnConfiguration.YARN_HTTP_POLICY_KEY,
+      YarnConfiguration.YARN_HTTP_POLICY_DEFAULT
+    )
+    val httpScheme = if (yarnHttpPolicy == "HTTPS_ONLY") "https://" else "http://"
+
     // Add log urls
     sys.env.get("SPARK_USER").foreach { user =>
-      val baseUrl = "http://%s/node/containerlogs/%s/%s"
-        .format(container.getNodeHttpAddress, ConverterUtils.toString(container.getId), user)
-      env("SPARK_LOG_URL_STDERR") = s"$baseUrl/stderr?start=0"
-      env("SPARK_LOG_URL_STDOUT") = s"$baseUrl/stdout?start=0"
+      val containerId = ConverterUtils.toString(container.getId)
+      val address = container.getNodeHttpAddress
+      val baseUrl = s"$httpScheme$address/node/containerlogs/$containerId/$user"
+
+      env("SPARK_LOG_URL_STDERR") = s"$baseUrl/stderr?start=-4096"
+      env("SPARK_LOG_URL_STDOUT") = s"$baseUrl/stdout?start=-4096"
     }
 
     System.getenv().filterKeys(_.startsWith("SPARK")).foreach { case (k, v) => env(k) = v }
