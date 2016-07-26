@@ -33,8 +33,7 @@ import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.io.SequenceFile.CompressionType
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{FileOutputCommitter, FileOutputFormat, JobConf, OutputFormat}
-import org.apache.hadoop.mapreduce.{Job => NewAPIHadoopJob, OutputFormat => NewOutputFormat,
-  RecordWriter => NewRecordWriter}
+import org.apache.hadoop.mapreduce.{Job => NewAPIHadoopJob, OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter, JobStatus}
 
 import org.apache.spark._
 import org.apache.spark.Partitioner.defaultPartitioner
@@ -1107,7 +1106,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       val writer = format.getRecordWriter(hadoopContext).asInstanceOf[NewRecordWriter[K, V]]
       require(writer != null, "Unable to obtain RecordWriter")
       var recordsWritten = 0L
-      Utils.tryWithSafeFinally {
+      Utils.tryWithException {
         while (iter.hasNext) {
           val pair = iter.next()
           writer.write(pair._1, pair._2)
@@ -1116,6 +1115,8 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
           maybeUpdateOutputMetrics(bytesWrittenCallback, outputMetrics, recordsWritten)
           recordsWritten += 1
         }
+      } {
+        committer.abortTask(hadoopContext)
       } {
         writer.close(hadoopContext)
       }
@@ -1143,7 +1144,12 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     }
 
     jobCommitter.setupJob(jobTaskContext)
-    self.context.runJob(self, writeShard)
+    try {
+      self.context.runJob(self, writeShard)
+    } catch {
+      case e: Exception =>
+        jobCommitter.abortJob(jobTaskContext, JobStatus.State.FAILED)
+    }
     jobCommitter.commitJob(jobTaskContext)
   }
 
@@ -1193,7 +1199,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       writer.open()
       var recordsWritten = 0L
 
-      Utils.tryWithSafeFinally {
+      Utils.tryWithException {
         while (iter.hasNext) {
           val record = iter.next()
           writer.write(record._1.asInstanceOf[AnyRef], record._2.asInstanceOf[AnyRef])
@@ -1203,6 +1209,8 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
           recordsWritten += 1
         }
       } {
+        writer.abortTask()
+      } {
         writer.close()
       }
       writer.commit()
@@ -1210,7 +1218,12 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       outputMetrics.setRecordsWritten(recordsWritten)
     }
 
-    self.context.runJob(self, writeToFile)
+    try {
+      self.context.runJob(self, writeToFile)
+    } catch {
+      case e: Exception =>
+        writer.abortJob()
+    }
     writer.commitJob()
   }
 

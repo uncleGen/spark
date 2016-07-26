@@ -22,9 +22,11 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 
+import org.apache.hadoop.mapreduce.JobStatus
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.fs.Path
+import org.apache.hadoop.mapreduce.OutputCommitter
 
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
 import org.apache.spark.rdd.HadoopRDD
@@ -103,6 +105,10 @@ class SparkHadoopWriter(jobConf: JobConf)
     writer.close(Reporter.NULL)
   }
 
+  def abortTask(): Unit = {
+      getOutputCommitter().abortTask(getTaskContext())
+  }
+
   def commit() {
     SparkHadoopMapRedUtil.commitTask(getOutputCommitter(), getTaskContext(), jobID, splitID)
   }
@@ -110,6 +116,11 @@ class SparkHadoopWriter(jobConf: JobConf)
   def commitJob() {
     val cmtr = getOutputCommitter()
     cmtr.commitJob(getJobContext())
+  }
+
+  def abortJob() {
+    val cmtr = getOutputCommitter()
+    cmtr.abortJob(getJobContext(), JobStatus.State.FAILED)
   }
 
   // ********* Private Functions *********
