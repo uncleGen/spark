@@ -1149,6 +1149,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     } catch {
       case e: Exception =>
         jobCommitter.abortJob(jobTaskContext, JobStatus.State.FAILED)
+        throw e
     }
     jobCommitter.commitJob(jobTaskContext)
   }
@@ -1223,6 +1224,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     } catch {
       case e: Exception =>
         writer.abortJob()
+        throw e
     }
     writer.commitJob()
   }
