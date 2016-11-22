@@ -723,6 +723,9 @@ private[spark] class BlockManager(
       level: StorageLevel,
       tellMaster: Boolean = true): Boolean = {
     require(values != null, "Values is null")
+    // scalastyle:off println
+    println(s"5: ${implicitly[ClassTag[T]]}")
+    // scalastyle:on println
     doPutIterator(blockId, () => values, level, implicitly[ClassTag[T]], tellMaster) match {
       case None =>
         true
