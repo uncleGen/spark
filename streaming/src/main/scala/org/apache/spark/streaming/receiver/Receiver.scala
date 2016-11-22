@@ -118,9 +118,6 @@ abstract class Receiver[T](val storageLevel: StorageLevel)(implicit t: ClassTag[
    * being pushed into Spark's memory.
    */
   def store(dataItem: T) {
-    // scalastyle:off println
-    println(s"1: ${implicitly[ClassTag[T]]}")
-    // scalastyle:on println
     supervisor.pushSingle(dataItem)
   }
 

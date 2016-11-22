@@ -612,9 +612,6 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
           }
           if (TaskContext.get().attemptNumber() == 0) {
             val receiver = iterator.next()
-            // scalastyle:off println
-            println(s"6: ${receiver.getClassTag}")
-            // scalastyle:on println
             assert(iterator.hasNext == false)
             val supervisor = getReceiverSupervisor(receiver, SparkEnv.get,
               serializableHadoopConf.value, checkpointDirOption)(receiver.getClassTag)

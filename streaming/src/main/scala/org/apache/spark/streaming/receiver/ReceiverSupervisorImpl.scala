@@ -110,9 +110,6 @@ private[streaming] class ReceiverSupervisorImpl[T: ClassTag](
     }
 
     def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[T]) {
-      // scalastyle:off println
-      println(s"3: ${implicitly[ClassTag[T]]}")
-      // scalastyle:on println
       pushArrayBuffer(arrayBuffer, None, Some(blockId))
     }
   }
@@ -123,9 +120,6 @@ private[streaming] class ReceiverSupervisorImpl[T: ClassTag](
 
   /** Push a single record of received data into block generator. */
   def pushSingle(data: T) {
-    // scalastyle:off println
-    println(s"2: ${implicitly[ClassTag[T]]}")
-    // scalastyle:on println
     defaultBlockGenerator.addData(data)
   }
 
@@ -162,9 +156,6 @@ private[streaming] class ReceiverSupervisorImpl[T: ClassTag](
       metadataOption: Option[Any],
       blockIdOption: Option[StreamBlockId]
     ) {
-    // scalastyle:off println
-    println(s"4: ${implicitly[ClassTag[T]]}")
-    // scalastyle:on println
     val blockId = blockIdOption.getOrElse(nextBlockId)
     val time = System.currentTimeMillis
     val blockStoreResult = receivedBlockHandler.storeBlock(blockId, receivedBlock)
