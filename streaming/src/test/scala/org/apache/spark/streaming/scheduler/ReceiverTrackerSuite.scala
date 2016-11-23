@@ -148,7 +148,7 @@ private[streaming] class RateTestReceiver(receiverId: Int, host: Option[String] 
   extends Receiver[Int](StorageLevel.MEMORY_ONLY) {
 
   private lazy val customBlockGenerator = supervisor.createBlockGenerator(
-    new BlockGeneratorListener {
+    new BlockGeneratorListener[Int] {
       override def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[Int]): Unit = {}
       override def onAddData(data: ArrayBuffer[Int], metadata: Any): Unit = {}
       override def onError(message: String, throwable: Throwable): Unit = {}
