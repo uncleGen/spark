@@ -149,10 +149,11 @@ private[streaming] class RateTestReceiver(receiverId: Int, host: Option[String] 
 
   private lazy val customBlockGenerator = supervisor.createBlockGenerator(
     new BlockGeneratorListener {
-      override def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[_]): Unit = {}
+      override def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[Int]): Unit = {}
+      override def onAddData(data: ArrayBuffer[Int], metadata: Any): Unit = {}
       override def onError(message: String, throwable: Throwable): Unit = {}
       override def onGenerateBlock(blockId: StreamBlockId): Unit = {}
-      override def onAddData(data: Any, metadata: Any): Unit = {}
+      override def onAddData(data: Int, metadata: Any): Unit = {}
     }
   )
 

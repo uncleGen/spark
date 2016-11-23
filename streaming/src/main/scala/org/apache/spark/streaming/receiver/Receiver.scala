@@ -21,7 +21,7 @@ import java.nio.ByteBuffer
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConverters._
-import scala.reflect.ClassTag
+import scala.reflect.{classTag, ClassTag}
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.storage.StorageLevel
@@ -86,6 +86,10 @@ import org.apache.spark.storage.StorageLevel
 @DeveloperApi
 abstract class Receiver[T](val storageLevel: StorageLevel)(implicit t: ClassTag[T])
   extends Serializable {
+
+  def this(clz: Class[T], storageLevel: StorageLevel) {
+    this(storageLevel)(ClassTag.AnyRef.asInstanceOf[ClassTag[T]])
+  }
 
   /**
    * This method is called by the system when the receiver is started. This function
