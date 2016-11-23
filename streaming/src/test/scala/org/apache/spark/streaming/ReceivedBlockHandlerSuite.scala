@@ -20,13 +20,16 @@ package org.apache.spark.streaming
 import java.io.File
 import java.nio.ByteBuffer
 
+import scala.collection.immutable.Range
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.reflect.ClassTag
+
 import org.apache.hadoop.conf.Configuration
 import org.scalatest.{BeforeAndAfter, Matchers}
 import org.scalatest.concurrent.Eventually._
+
 import org.apache.spark._
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.internal.Logging
@@ -41,8 +44,6 @@ import org.apache.spark.streaming.receiver._
 import org.apache.spark.streaming.util._
 import org.apache.spark.util.{ManualClock, Utils}
 import org.apache.spark.util.io.ChunkedByteBuffer
-
-import scala.collection.immutable.Range
 
 class ReceivedBlockHandlerSuite
   extends SparkFunSuite
