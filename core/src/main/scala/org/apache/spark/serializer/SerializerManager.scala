@@ -195,7 +195,7 @@ private[spark] class SerializerManager(
   }
 
   /**
-   * Deserializes an InputStream into an iterator of values and disposes of it when the end of
+   * Deserialize an InputStream into an iterator of values and disposes of it when the end of
    * the iterator is reached.
    */
   def dataDeserializeStream[T](
@@ -203,7 +203,6 @@ private[spark] class SerializerManager(
       inputStream: InputStream,
       maybeEncrypted: Boolean = true)
       (classTag: ClassTag[T]): Iterator[T] = {
-    val stream = new BufferedInputStream(inputStream)
     val autoPick = !blockId.isInstanceOf[StreamBlockId]
     val decrypted = if (maybeEncrypted) wrapForEncryption(inputStream) else inputStream
     getSerializer(classTag, autoPick)

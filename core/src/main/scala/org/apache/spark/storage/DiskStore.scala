@@ -17,20 +17,19 @@
 
 package org.apache.spark.storage
 
-import java.io.{FileOutputStream, IOException, RandomAccessFile}
+import java.io.{RandomAccessFile, FileOutputStream, IOException, InputStream}
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel.MapMode
 
 import scala.reflect.ClassTag
 
-import com.google.common.io.{ByteStreams, Closeables}
-import org.apache.commons.io.IOUtils
+import com.google.common.io.{Closeables, ByteStreams}
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.SparkConf
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.util.{ByteBufferInputStream, ByteBufferOutputStream, Utils}
+import org.apache.spark.util.{Utils, ByteBufferOutputStream, ByteBufferInputStream}
 import org.apache.spark.util.io.ChunkedByteBuffer
 
 /**
@@ -80,8 +79,11 @@ private[spark] class DiskStore(
       finishTime - startTime))
   }
 
-  def putBytes(blockId: BlockId, bytes: ChunkedByteBuffer): Unit = {
-    val bytesToStore = if (serializerManager.encryptionEnabled) {
+  def putBytes(
+      blockId: BlockId,
+      bytes: ChunkedByteBuffer,
+      maybeEncrypted: Boolean = false): Unit = {
+    val bytesToStore = if (!maybeEncrypted && serializerManager.encryptionEnabled) {
       try {
         val data = bytes.toByteBuffer
         val in = new ByteBufferInputStream(data, true)
@@ -112,16 +114,23 @@ private[spark] class DiskStore(
     }
   }
 
-  def getBytes(blockId: BlockId): ChunkedByteBuffer = {
+  /**
+   * Read raw data, and decrypt them.
+   */
+  def getBytesAsInputStream(blockId: BlockId): InputStream = {
     val bytes = readBytes(blockId)
+    serializerManager.wrapForEncryption(bytes.toInputStream(dispose = true))
+  }
 
-    val in = serializerManager.wrapForEncryption(bytes.toInputStream(dispose = true))
-    new ChunkedByteBuffer(ByteBuffer.wrap(IOUtils.toByteArray(in)))
+  /**
+   * Read raw data, and do not decrypt them.
+   */
+  def getRawBytes(blockId: BlockId): ChunkedByteBuffer = {
+    readBytes(blockId)
   }
 
   def getBytesAsValues[T](blockId: BlockId, classTag: ClassTag[T]): Iterator[T] = {
     val bytes = readBytes(blockId)
-
     serializerManager
       .dataDeserializeStream(blockId, bytes.toInputStream(dispose = true))(classTag)
   }

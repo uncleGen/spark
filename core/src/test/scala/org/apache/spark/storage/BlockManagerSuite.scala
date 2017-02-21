@@ -207,8 +207,8 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     assert(master.getLocations("a3").size === 0, "master was told about a3")
 
     // Drop a1 and a2 from memory; this should be reported back to the master
-    store.dropFromMemoryIfExists("a1", () => null: Either[Array[Any], ChunkedByteBuffer])
-    store.dropFromMemoryIfExists("a2", () => null: Either[Array[Any], ChunkedByteBuffer])
+    store.dropFromMemoryIfExists("a1", () => null: Either[Array[Any], (Boolean, ChunkedByteBuffer)])
+    store.dropFromMemoryIfExists("a2", () => null: Either[Array[Any], (Boolean, ChunkedByteBuffer)])
     assert(store.getSingleAndReleaseLock("a1") === None, "a1 not removed from store")
     assert(store.getSingleAndReleaseLock("a2") === None, "a2 not removed from store")
     assert(master.getLocations("a1").size === 0, "master did not remove a1")
@@ -449,8 +449,10 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
       t2.join()
       t3.join()
 
-      store.dropFromMemoryIfExists("a1", () => null: Either[Array[Any], ChunkedByteBuffer])
-      store.dropFromMemoryIfExists("a2", () => null: Either[Array[Any], ChunkedByteBuffer])
+      store.dropFromMemoryIfExists("a1",
+        () => null: Either[Array[Any], (Boolean, ChunkedByteBuffer)])
+      store.dropFromMemoryIfExists("a2",
+        () => null: Either[Array[Any], (Boolean, ChunkedByteBuffer)])
       store.waitForAsyncReregister()
     }
   }
@@ -1294,7 +1296,7 @@ private object BlockManagerSuite {
 
     def dropFromMemoryIfExists(
         blockId: BlockId,
-        data: () => Either[Array[Any], ChunkedByteBuffer]): Unit = {
+        data: () => Either[Array[Any], (Boolean, ChunkedByteBuffer)]): Unit = {
       store.blockInfoManager.lockForWriting(blockId).foreach { info =>
         val newEffectiveStorageLevel = store.dropFromMemory(blockId, data)
         if (newEffectiveStorageLevel.isValid) {

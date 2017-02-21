@@ -21,12 +21,14 @@ import java.io._
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
-import java.util.zip.{ZipInputStream, ZipOutputStream}
+import java.util.zip.{ZipOutputStream, ZipInputStream}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-import com.google.common.io.{ByteStreams, Files}
+import com.google.common.io.{Files, ByteStreams}
+import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.permission.FsPermission
 import org.apache.hadoop.hdfs.DistributedFileSystem
 import org.json4s.jackson.JsonMethods._
 import org.mockito.Matchers.any
@@ -35,19 +37,20 @@ import org.scalatest.BeforeAndAfter
 import org.scalatest.Matchers
 import org.scalatest.concurrent.Eventually._
 
-import org.apache.spark.{SecurityManager, SparkConf, SparkFunSuite}
+import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.{SparkFunSuite, SecurityManager, SparkConf}
 import org.apache.spark.internal.Logging
 import org.apache.spark.io._
 import org.apache.spark.scheduler._
 import org.apache.spark.security.GroupMappingServiceProvider
-import org.apache.spark.util.{Clock, JsonProtocol, ManualClock, Utils}
+import org.apache.spark.util.{Utils, Clock, ManualClock, JsonProtocol}
 
 class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matchers with Logging {
 
   private var testDir: File = null
 
   before {
-    testDir = Utils.createTempDir(namePrefix = s"a b%20c+d")
+    testDir = Utils.createTempDir(namePrefix = s"a/d")
   }
 
   after {
@@ -143,7 +146,11 @@ class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matc
       SparkListenerApplicationStart("app1-2", Some("app1-2"), 1L, "test", None),
       SparkListenerApplicationEnd(2L)
       )
-    logFile2.setReadable(false, false)
+//    logFilele2.setReadable(false, false)
+    val hadoopConf = SparkHadoopUtil.get.newConfiguration(new SparkConf())
+    val fs = Utils.getHadoopFileSystem(testDir.toURI, hadoopConf)
+    fs.setPermission(new Path(logFile2.toString),
+      FsPermission.createImmutable(Integer.parseInt("200", 8).toShort))
 
     val provider = new FsHistoryProvider(createTestConf())
     updateAndCheck(provider) { list =>
@@ -588,7 +595,9 @@ class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matc
 
   private def writeFile(file: File, isNewFormat: Boolean, codec: Option[CompressionCodec],
     events: SparkListenerEvent*) = {
-    val fstream = new FileOutputStream(file)
+    val hadoopConf = SparkHadoopUtil.get.newConfiguration(new SparkConf())
+    val fs = Utils.getHadoopFileSystem(testDir.toURI, hadoopConf)
+    val fstream = fs.create(new Path(file.toString))
     val cstream = codec.map(_.compressedOutputStream(fstream)).getOrElse(fstream)
     val bstream = new BufferedOutputStream(cstream)
     if (isNewFormat) {

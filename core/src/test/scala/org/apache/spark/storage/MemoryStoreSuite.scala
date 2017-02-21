@@ -67,7 +67,7 @@ class MemoryStoreSuite
       var memoryStore: MemoryStore = _
       override private[storage] def dropFromMemory[T: ClassTag](
           blockId: BlockId,
-          data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
+          data: () => Either[Array[T], (Boolean, ChunkedByteBuffer)]): StorageLevel = {
         memoryStore.remove(blockId)
         StorageLevel.NONE
       }
@@ -394,7 +394,7 @@ class MemoryStoreSuite
       blockId, new BlockInfo(StorageLevel.MEMORY_ONLY, ClassTag.Any, tellMaster = false))
     memoryStore.putBytes(blockId, 13000, MemoryMode.ON_HEAP, () => {
       fail("A big ByteBuffer that cannot be put into MemoryStore should not be created")
-    })
+    }, maybeEncrypted = false)
   }
 
   test("put a small ByteBuffer to MemoryStore") {
@@ -404,7 +404,7 @@ class MemoryStoreSuite
     memoryStore.putBytes(blockId, 10000, MemoryMode.ON_HEAP, () => {
       bytes = new ChunkedByteBuffer(ByteBuffer.allocate(10000))
       bytes
-    })
+    }, maybeEncrypted = false)
     assert(memoryStore.getSize(blockId) === 10000)
   }
 }

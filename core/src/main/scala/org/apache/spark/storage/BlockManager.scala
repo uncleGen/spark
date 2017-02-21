@@ -462,11 +462,12 @@ private[spark] class BlockManager(
               val diskValues = diskStore.getBytesAsValues(blockId, info.classTag)
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
-              val diskBytes = diskStore.getBytes(blockId)
-              val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes)
+              val rawDiskBytes = diskStore.getRawBytes(blockId)
+              val stream = maybeCacheDiskBytesInMemory(info, blockId, level, rawDiskBytes)
                 .map {_.toInputStream(dispose = false)}
-                .getOrElse { diskBytes.toInputStream(dispose = true) }
-              serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
+                .getOrElse {diskStore.getBytesAsInputStream(blockId)}
+              serializerManager
+                .dataDeserializeStream(blockId, stream, maybeEncrypted = false)(info.classTag)
             }
           }
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, releaseLock(blockId))
@@ -514,7 +515,7 @@ private[spark] class BlockManager(
         // handles deserialized blocks, this block may only be cached in memory as objects, not
         // serialized bytes. Because the caller only requested bytes, it doesn't make sense to
         // cache the block's deserialized objects since that caching may not have a payoff.
-        diskStore.getBytes(blockId)
+        diskStore.getRawBytes(blockId)
       } else if (level.useMemory && memoryStore.contains(blockId)) {
         // The block was not found on disk, so serialize an in-memory copy:
         serializerManager.dataSerializeWithExplicitClassTag(
@@ -526,7 +527,7 @@ private[spark] class BlockManager(
       if (level.useMemory && memoryStore.contains(blockId)) {
         memoryStore.getBytes(blockId).get
       } else if (level.useDisk && diskStore.contains(blockId)) {
-        val diskBytes = diskStore.getBytes(blockId)
+        val diskBytes = diskStore.getRawBytes(blockId)
         maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes).getOrElse(diskBytes)
       } else {
         handleLocalReadFailure(blockId)
@@ -542,8 +543,8 @@ private[spark] class BlockManager(
   private def getRemoteValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val ct = implicitly[ClassTag[T]]
     getRemoteBytes(blockId).map { data =>
-      val values =
-        serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))(ct)
+      val values = serializerManager.dataDeserializeStream(
+        blockId, data.toInputStream(dispose = true))(ct)
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
   }
@@ -814,7 +815,7 @@ private[spark] class BlockManager(
               false
           }
         } else {
-          memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes)
+          memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes, maybeEncrypted = true)
         }
         if (!putSucceeded && level.useDisk) {
           logWarning(s"Persisting block $blockId to disk instead.")
@@ -1063,7 +1064,7 @@ private[spark] class BlockManager(
             // cannot put it into MemoryStore, copyForMemory should not be created. That's why
             // this action is put into a `() => ChunkedByteBuffer` and created lazily.
             diskBytes.copy(allocator)
-          })
+          }, maybeEncrypted = false)
           if (putSucceeded) {
             diskBytes.dispose()
             Some(memoryStore.getBytes(blockId).get)
@@ -1247,7 +1248,7 @@ private[spark] class BlockManager(
    */
   private[storage] override def dropFromMemory[T: ClassTag](
       blockId: BlockId,
-      data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
+      data: () => Either[Array[T], (Boolean, ChunkedByteBuffer)]): StorageLevel = {
     logInfo(s"Dropping block $blockId from memory")
     val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
     var blockIsUpdated = false
@@ -1264,8 +1265,8 @@ private[spark] class BlockManager(
               fileOutputStream,
               elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
           }
-        case Right(bytes) =>
-          diskStore.putBytes(blockId, bytes)
+        case Right((maybeEncrypted, bytes)) =>
+          diskStore.putBytes(blockId, bytes, maybeEncrypted)
       }
       blockIsUpdated = true
     }

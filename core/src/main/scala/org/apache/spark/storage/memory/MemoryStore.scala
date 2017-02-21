@@ -26,16 +26,17 @@ import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 import com.google.common.io.ByteStreams
+import org.apache.commons.io.IOUtils
 
-import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.{TaskContext, SparkConf}
 import org.apache.spark.internal.Logging
-import org.apache.spark.memory.{MemoryManager, MemoryMode}
-import org.apache.spark.serializer.{SerializationStream, SerializerManager}
-import org.apache.spark.storage.{BlockId, BlockInfoManager, StorageLevel, StreamBlockId}
+import org.apache.spark.memory.{MemoryMode, MemoryManager}
+import org.apache.spark.serializer.{SerializerManager, SerializationStream}
+import org.apache.spark.storage.{StorageLevel, BlockId, BlockInfoManager, StreamBlockId}
 import org.apache.spark.unsafe.Platform
-import org.apache.spark.util.{SizeEstimator, Utils}
+import org.apache.spark.util.{Utils, SizeEstimator}
 import org.apache.spark.util.collection.SizeTrackingVector
-import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStream}
+import org.apache.spark.util.io.{ChunkedByteBufferOutputStream, ChunkedByteBuffer}
 
 private sealed trait MemoryEntry[T] {
   def size: Long
@@ -48,9 +49,15 @@ private case class DeserializedMemoryEntry[T](
     classTag: ClassTag[T]) extends MemoryEntry[T] {
   val memoryMode: MemoryMode = MemoryMode.ON_HEAP
 }
+
+/**
+ * @param encrypted: if true, it indicates implicitly the buffer data comes from `DiskStore`.
+ *                   We keep it as encrypted, and decrypt it lazily.
+ */
 private case class SerializedMemoryEntry[T](
     buffer: ChunkedByteBuffer,
     memoryMode: MemoryMode,
+    encrypted: Boolean,
     classTag: ClassTag[T]) extends MemoryEntry[T] {
   def size: Long = buffer.size
 }
@@ -69,7 +76,7 @@ private[storage] trait BlockEvictionHandler {
    */
   private[storage] def dropFromMemory[T: ClassTag](
       blockId: BlockId,
-      data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel
+      data: () => Either[Array[T], (Boolean, ChunkedByteBuffer)]): StorageLevel
 }
 
 /**
@@ -142,13 +149,15 @@ private[spark] class MemoryStore(
       blockId: BlockId,
       size: Long,
       memoryMode: MemoryMode,
-      _bytes: () => ChunkedByteBuffer): Boolean = {
+      _bytes: () => ChunkedByteBuffer,
+      maybeEncrypted: Boolean): Boolean = {
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
     if (memoryManager.acquireStorageMemory(blockId, size, memoryMode)) {
       // We acquired enough memory for the block, so go ahead and put it
       val bytes = _bytes()
       assert(bytes.size == size)
-      val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
+      val entry = new SerializedMemoryEntry[T](bytes, memoryMode, maybeEncrypted,
+        implicitly[ClassTag[T]])
       entries.synchronized {
         entries.put(blockId, entry)
       }
@@ -408,7 +417,8 @@ private[spark] class MemoryStore(
     }
 
     if (keepUnrolling) {
-      val entry = SerializedMemoryEntry[T](bbos.toChunkedByteBuffer, memoryMode, classTag)
+      val entry =
+        SerializedMemoryEntry[T](bbos.toChunkedByteBuffer, memoryMode, encrypted = false, classTag)
       // Synchronize so that transfer is atomic
       memoryManager.synchronized {
         releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
@@ -446,7 +456,10 @@ private[spark] class MemoryStore(
       case null => None
       case e: DeserializedMemoryEntry[_] =>
         throw new IllegalArgumentException("should only call getBytes on serialized blocks")
-      case SerializedMemoryEntry(bytes, _, _) => Some(bytes)
+      case SerializedMemoryEntry(bytes, _, false, _) => Some(bytes)
+      case SerializedMemoryEntry(bytes, _, true, _) =>
+        val in = serializerManager.wrapForEncryption(bytes.toInputStream(dispose = true))
+        Some(new ChunkedByteBuffer(ByteBuffer.wrap(IOUtils.toByteArray(in))))
     }
   }
 
@@ -468,7 +481,7 @@ private[spark] class MemoryStore(
     }
     if (entry != null) {
       entry match {
-        case SerializedMemoryEntry(buffer, _, _) => buffer.dispose()
+        case SerializedMemoryEntry(buffer, _, _, _) => buffer.dispose()
         case _ =>
       }
       memoryManager.releaseStorageMemory(entry.size, entry.memoryMode)
@@ -544,7 +557,7 @@ private[spark] class MemoryStore(
       def dropBlock[T](blockId: BlockId, entry: MemoryEntry[T]): Unit = {
         val data = entry match {
           case DeserializedMemoryEntry(values, _, _) => Left(values)
-          case SerializedMemoryEntry(buffer, _, _) => Right(buffer)
+          case SerializedMemoryEntry(buffer, _, encrypted, _) => Right((encrypted, buffer))
         }
         val newEffectiveStorageLevel =
           blockEvictionHandler.dropFromMemory(blockId, () => data)(entry.classTag)
