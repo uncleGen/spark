@@ -56,10 +56,10 @@ class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matc
 
   /** Create a fake log file using the new log format used in Spark 1.3+ */
   private def newLogFile(
-                          appId: String,
-                          appAttemptId: Option[String],
-                          inProgress: Boolean,
-                          codec: Option[String] = None): File = {
+      appId: String,
+      appAttemptId: Option[String],
+      inProgress: Boolean,
+      codec: Option[String] = None): File = {
     val ip = if (inProgress) EventLoggingListener.IN_PROGRESS else ""
     val logUri = EventLoggingListener.getLogPath(testDir.toURI, appId, appAttemptId)
     val logPath = new URI(logUri).getPath + ip
@@ -100,13 +100,13 @@ class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matc
       list.count(_.attempts.head.completed) should be (2)
 
       def makeAppInfo(
-                       id: String,
-                       name: String,
-                       start: Long,
-                       end: Long,
-                       lastMod: Long,
-                       user: String,
-                       completed: Boolean): ApplicationHistoryInfo = {
+          id: String,
+          name: String,
+          start: Long,
+          end: Long,
+          lastMod: Long,
+          user: String,
+          completed: Boolean): ApplicationHistoryInfo = {
         ApplicationHistoryInfo(id, name,
           List(ApplicationAttemptInfo(None, start, end, lastMod, user, completed)))
       }
@@ -580,7 +580,7 @@ class FsHistoryProviderSuite extends SparkFunSuite with BeforeAndAfter with Matc
     *     }
     */
   private def updateAndCheck(provider: FsHistoryProvider)
-                            (checkFn: Seq[ApplicationHistoryInfo] => Unit): Unit = {
+      (checkFn: Seq[ApplicationHistoryInfo] => Unit): Unit = {
     provider.checkForLogs()
     provider.cleanLogs()
     checkFn(provider.getListing().toSeq)
