@@ -451,8 +451,9 @@ private[spark] class BlockManager(
           val iter: Iterator[Any] = if (level.deserialized) {
             memoryStore.getValues(blockId).get
           } else {
-            serializerManager.dataDeserializeStream(
-              blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
+            serializerManager.dataDeserializeStream(blockId,
+              memoryStore.getBytes(blockId, allowEncrypt = false).get.toInputStream(),
+              maybeEncrypted = false) (info.classTag)
           }
           val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
@@ -463,7 +464,7 @@ private[spark] class BlockManager(
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val rawDiskBytes = diskStore.getRawBytes(blockId)
-              val stream = maybeCacheDiskBytesInMemory(info, blockId, level, rawDiskBytes)
+              val stream = maybeCacheDiskBytesInMemory(info, blockId, level, rawDiskBytes, false)
                 .map {_.toInputStream(dispose = false)}
                 .getOrElse {diskStore.getBytesAsInputStream(blockId)}
               serializerManager
@@ -525,10 +526,10 @@ private[spark] class BlockManager(
       }
     } else {  // storage level is serialized
       if (level.useMemory && memoryStore.contains(blockId)) {
-        memoryStore.getBytes(blockId).get
+        memoryStore.getBytes(blockId, allowEncrypt = true).get
       } else if (level.useDisk && diskStore.contains(blockId)) {
         val diskBytes = diskStore.getRawBytes(blockId)
-        maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes).getOrElse(diskBytes)
+        maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes, true).getOrElse(diskBytes)
       } else {
         handleLocalReadFailure(blockId)
       }
@@ -544,8 +545,7 @@ private[spark] class BlockManager(
     val ct = implicitly[ClassTag[T]]
     getRemoteBytes(blockId).map { data =>
       val values = serializerManager.dataDeserializeStream(
-        // TODO: set "maybeEncrypted = false", trick for test
-        blockId, data.toInputStream(dispose = true), maybeEncrypted = false)(ct)
+        blockId, data.toInputStream(dispose = true))(ct)
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
   }
@@ -1045,7 +1045,8 @@ private[spark] class BlockManager(
       blockInfo: BlockInfo,
       blockId: BlockId,
       level: StorageLevel,
-      diskBytes: ChunkedByteBuffer): Option[ChunkedByteBuffer] = {
+      diskBytes: ChunkedByteBuffer,
+      allowEncrypt: Boolean): Option[ChunkedByteBuffer] = {
     require(!level.deserialized)
     if (level.useMemory) {
       // Synchronize on blockInfo to guard against a race condition where two readers both try to
@@ -1053,7 +1054,7 @@ private[spark] class BlockManager(
       blockInfo.synchronized {
         if (memoryStore.contains(blockId)) {
           diskBytes.dispose()
-          Some(memoryStore.getBytes(blockId).get)
+          Some(memoryStore.getBytes(blockId, allowEncrypt).get)
         } else {
           val allocator = level.memoryMode match {
             case MemoryMode.ON_HEAP => ByteBuffer.allocate _
@@ -1068,7 +1069,7 @@ private[spark] class BlockManager(
           }, maybeEncrypted = true)
           if (putSucceeded) {
             diskBytes.dispose()
-            Some(memoryStore.getBytes(blockId).get)
+            Some(memoryStore.getBytes(blockId, allowEncrypt).get)
           } else {
             None
           }

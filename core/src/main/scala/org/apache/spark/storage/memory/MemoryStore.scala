@@ -31,10 +31,11 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.{TaskContext, SparkConf}
 import org.apache.spark.internal.Logging
 import org.apache.spark.memory.{MemoryMode, MemoryManager}
+import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{SerializerManager, SerializationStream}
 import org.apache.spark.storage.{StorageLevel, BlockId, BlockInfoManager, StreamBlockId}
 import org.apache.spark.unsafe.Platform
-import org.apache.spark.util.{Utils, SizeEstimator}
+import org.apache.spark.util.{Utils, SizeEstimator, ByteBufferInputStream, ByteBufferOutputStream}
 import org.apache.spark.util.collection.SizeTrackingVector
 import org.apache.spark.util.io.{ChunkedByteBufferOutputStream, ChunkedByteBuffer}
 
@@ -51,13 +52,13 @@ private case class DeserializedMemoryEntry[T](
 }
 
 /**
- * @param encrypted: if true, it indicates implicitly the buffer data comes from `DiskStore`.
+ * @param maybeEncrypted: if true, it indicates implicitly the buffer data comes from `DiskStore`.
  *                   We keep it as encrypted, and decrypt it lazily.
  */
 private case class SerializedMemoryEntry[T](
     buffer: ChunkedByteBuffer,
     memoryMode: MemoryMode,
-    encrypted: Boolean,
+    maybeEncrypted: Boolean,
     classTag: ClassTag[T]) extends MemoryEntry[T] {
   def size: Long = buffer.size
 }
@@ -417,8 +418,8 @@ private[spark] class MemoryStore(
     }
 
     if (keepUnrolling) {
-      val entry =
-        SerializedMemoryEntry[T](bbos.toChunkedByteBuffer, memoryMode, encrypted = false, classTag)
+      val entry = SerializedMemoryEntry[T](bbos.toChunkedByteBuffer, memoryMode,
+        maybeEncrypted = false, classTag)
       // Synchronize so that transfer is atomic
       memoryManager.synchronized {
         releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
@@ -450,16 +451,46 @@ private[spark] class MemoryStore(
     }
   }
 
-  def getBytes(blockId: BlockId): Option[ChunkedByteBuffer] = {
+  def getBytes(blockId: BlockId, allowEncrypt: Boolean): Option[ChunkedByteBuffer] = {
     val entry = entries.synchronized { entries.get(blockId) }
     entry match {
       case null => None
       case e: DeserializedMemoryEntry[_] =>
         throw new IllegalArgumentException("should only call getBytes on serialized blocks")
-      case SerializedMemoryEntry(bytes, _, false, _) => Some(bytes)
+      case SerializedMemoryEntry(bytes, _, false, _) =>
+        if (allowEncrypt) {
+          val _bytes = if (serializerManager.encryptionEnabled) {
+            try {
+              val data = bytes.toByteBuffer
+              val in = new ByteBufferInputStream(data, true)
+              val byteBufOut = new ByteBufferOutputStream(data.remaining())
+              val out = CryptoStreamUtils.createCryptoOutputStream(byteBufOut, conf,
+                serializerManager.encryptionKey.get)
+              try {
+                ByteStreams.copy(in, out)
+              } finally {
+                in.close()
+                out.close()
+              }
+              new ChunkedByteBuffer(byteBufOut.toByteBuffer)
+            } finally {
+              bytes.dispose()
+            }
+          } else {
+            bytes
+          }
+
+          Some(_bytes)
+        } else {
+          Some(bytes)
+        }
       case SerializedMemoryEntry(bytes, _, true, _) =>
-        val in = serializerManager.wrapForEncryption(bytes.toInputStream(dispose = true))
-        Some(new ChunkedByteBuffer(ByteBuffer.wrap(IOUtils.toByteArray(in))))
+        if (allowEncrypt) {
+          Some(bytes)
+        } else {
+          val in = serializerManager.wrapForEncryption(bytes.toInputStream(dispose = true))
+          Some(new ChunkedByteBuffer(ByteBuffer.wrap(IOUtils.toByteArray(in))))
+        }
     }
   }
 
