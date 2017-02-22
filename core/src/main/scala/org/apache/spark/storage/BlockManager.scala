@@ -544,7 +544,8 @@ private[spark] class BlockManager(
     val ct = implicitly[ClassTag[T]]
     getRemoteBytes(blockId).map { data =>
       val values = serializerManager.dataDeserializeStream(
-        blockId, data.toInputStream(dispose = true))(ct)
+        // TODO: set "maybeEncrypted = false", trick for test
+        blockId, data.toInputStream(dispose = true), maybeEncrypted = false)(ct)
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
   }
@@ -815,7 +816,7 @@ private[spark] class BlockManager(
               false
           }
         } else {
-          memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes, maybeEncrypted = true)
+          memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes, maybeEncrypted = false)
         }
         if (!putSucceeded && level.useDisk) {
           logWarning(s"Persisting block $blockId to disk instead.")
@@ -1064,7 +1065,7 @@ private[spark] class BlockManager(
             // cannot put it into MemoryStore, copyForMemory should not be created. That's why
             // this action is put into a `() => ChunkedByteBuffer` and created lazily.
             diskBytes.copy(allocator)
-          }, maybeEncrypted = false)
+          }, maybeEncrypted = true)
           if (putSucceeded) {
             diskBytes.dispose()
             Some(memoryStore.getBytes(blockId).get)
