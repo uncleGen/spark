@@ -216,7 +216,7 @@ trait CheckAnalysis extends PredicateHelper {
               s"join condition '${condition.sql}' " +
                 s"of type ${condition.dataType.simpleString} is not a boolean.")
 
-          case Aggregate(groupingExprs, aggregateExprs, child) =>
+          case Aggregate(groupingExprs, aggregateExprs, child, _) =>
             def checkValidAggregateExpression(expr: Expression): Unit = expr match {
               case aggExpr: AggregateExpression =>
                 aggExpr.aggregateFunction.children.foreach { child =>

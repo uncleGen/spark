@@ -25,7 +25,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{AnalysisException, Row, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.UnsupportedOperationChecker
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, ReturnAnswer}
+import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan, ReturnAnswer}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.command.{DescribeTableCommand, ExecutedCommandExec, ShowTablesCommand}
@@ -61,8 +61,11 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
   }
 
   lazy val analyzed: LogicalPlan = {
+    val _logical = logical.transform {
+      case agg: Aggregate if agg.isStreaming => agg.stateful = true; agg
+    }
     SparkSession.setActiveSession(sparkSession)
-    sparkSession.sessionState.analyzer.execute(logical)
+    sparkSession.sessionState.analyzer.execute(_logical)
   }
 
   lazy val withCachedData: LogicalPlan = {

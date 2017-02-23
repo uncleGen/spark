@@ -202,7 +202,7 @@ object PhysicalAggregation {
     (Seq[NamedExpression], Seq[AggregateExpression], Seq[NamedExpression], LogicalPlan)
 
   def unapply(a: Any): Option[ReturnType] = a match {
-    case logical.Aggregate(groupingExpressions, resultExpressions, child) =>
+    case logical.Aggregate(groupingExpressions, resultExpressions, child, stateful) if stateful =>
       // A single aggregate expression might appear multiple times in resultExpressions.
       // In order to avoid evaluating an individual aggregate function multiple times, we'll
       // build a set of the distinct aggregate expressions and build a function which can

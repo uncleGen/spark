@@ -19,7 +19,7 @@ package org.apache.spark.sql.catalyst.plans.logical
 
 import org.apache.spark.sql.catalyst.{CatalystConf, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis.MultiInstanceRelation
-import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTypes}
+import org.apache.spark.sql.catalyst.catalog.CatalogTable
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.plans._
@@ -538,6 +538,8 @@ case class Aggregate(
     child: LogicalPlan)
   extends UnaryNode {
 
+  lazy val stateful = child.isStreaming
+
   override lazy val resolved: Boolean = {
     val hasWindowExpressions = aggregateExpressions.exists ( _.collect {
         case window: WindowExpression => window
@@ -574,12 +576,6 @@ case class Aggregate(
     }
   }
 }
-
-case class StatefulAggregate(
-    _groupingExpressions: Seq[Expression],
-    _aggregateExpressions: Seq[NamedExpression],
-    _child: LogicalPlan)
-  extends Aggregate(_groupingExpressions, _aggregateExpressions, _child)
 
 case class Window(
     windowExpressions: Seq[NamedExpression],
