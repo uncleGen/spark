@@ -48,7 +48,7 @@ case class OptimizeMetadataOnlyQuery(
     }
 
     plan.transform {
-      case a @ Aggregate(_, aggExprs, child @ PartitionedRelation(partAttrs, relation), _) =>
+      case a @ Aggregate(_, aggExprs, child @ PartitionedRelation(partAttrs, relation)) =>
         // We only apply this optimization when only partitioned attributes are scanned.
         if (a.references.subsetOf(partAttrs)) {
           val aggFunctions = aggExprs.flatMap(_.collect {

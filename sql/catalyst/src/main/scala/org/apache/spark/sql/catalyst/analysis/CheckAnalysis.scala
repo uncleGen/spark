@@ -208,7 +208,7 @@ trait CheckAnalysis extends PredicateHelper {
               case e if PredicateSubquery.hasNullAwarePredicateWithinNot(e) =>
                 failAnalysis(s"Null-aware predicate sub-queries cannot be used in nested" +
                   s" conditions: $e")
-              case e =>
+              case e =>unsu
             }
 
           case j @ Join(_, _, _, Some(condition)) if condition.dataType != BooleanType =>
@@ -216,7 +216,7 @@ trait CheckAnalysis extends PredicateHelper {
               s"join condition '${condition.sql}' " +
                 s"of type ${condition.dataType.simpleString} is not a boolean.")
 
-          case Aggregate(groupingExprs, aggregateExprs, child, _) =>
+          case Aggregate(groupingExprs, aggregateExprs, child) =>
             def checkValidAggregateExpression(expr: Expression): Unit = expr match {
               case aggExpr: AggregateExpression =>
                 aggExpr.aggregateFunction.children.foreach { child =>

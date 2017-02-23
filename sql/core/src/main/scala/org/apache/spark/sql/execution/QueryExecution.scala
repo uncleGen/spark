@@ -61,11 +61,8 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
   }
 
   lazy val analyzed: LogicalPlan = {
-    val _logical = logical.transform {
-      case agg: Aggregate if agg.isStreaming => agg.stateful = true; agg
-    }
     SparkSession.setActiveSession(sparkSession)
-    sparkSession.sessionState.analyzer.execute(_logical)
+    sparkSession.sessionState.analyzer.execute(logical)
   }
 
   lazy val withCachedData: LogicalPlan = {

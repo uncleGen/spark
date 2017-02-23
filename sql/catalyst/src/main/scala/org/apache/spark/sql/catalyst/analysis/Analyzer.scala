@@ -239,7 +239,7 @@ class Analyzer(
       exprs.exists(_.find(_.isInstanceOf[UnresolvedAlias]).isDefined)
 
     def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperators {
-      case Aggregate(groups, aggs, child, _) if child.resolved && hasUnresolvedAlias(aggs) =>
+      case Aggregate(groups, aggs, child) if child.resolved && hasUnresolvedAlias(aggs) =>
         Aggregate(groups, assignAliases(aggs), child)
 
       case g: GroupingSets if g.child.resolved && hasUnresolvedAlias(g.aggregations) =>
@@ -447,10 +447,10 @@ class Analyzer(
           s"${VirtualColumn.hiveGroupingIdName} is deprecated; use grouping_id() instead")
 
       // Ensure group by expressions and aggregate expressions have been resolved.
-      case Aggregate(Seq(c @ Cube(groupByExprs)), aggregateExpressions, child, _)
+      case Aggregate(Seq(c @ Cube(groupByExprs)), aggregateExpressions, child)
         if (groupByExprs ++ aggregateExpressions).forall(_.resolved) =>
         constructAggregate(cubeExprs(groupByExprs), groupByExprs, aggregateExpressions, child)
-      case Aggregate(Seq(r @ Rollup(groupByExprs)), aggregateExpressions, child, _)
+      case Aggregate(Seq(r @ Rollup(groupByExprs)), aggregateExpressions, child)
         if (groupByExprs ++ aggregateExpressions).forall(_.resolved) =>
         constructAggregate(rollupExprs(groupByExprs), groupByExprs, aggregateExpressions, child)
       // Ensure all the expressions have been resolved.
@@ -674,7 +674,7 @@ class Analyzer(
             if findAliases(projectList).intersect(conflictingAttributes).nonEmpty =>
           (oldVersion, oldVersion.copy(projectList = newAliases(projectList)))
 
-        case oldVersion @ Aggregate(_, aggregateExpressions, _, _)
+        case oldVersion @ Aggregate(_, aggregateExpressions, _)
             if findAliases(aggregateExpressions).intersect(conflictingAttributes).nonEmpty =>
           (oldVersion, oldVersion.copy(aggregateExpressions = newAliases(aggregateExpressions)))
 
@@ -907,7 +907,7 @@ class Analyzer(
 
       // Replace the index with the corresponding expression in aggregateExpressions. The index is
       // a 1-base position of aggregateExpressions, which is output columns (select expression)
-      case a @ Aggregate(groups, aggs, child, _) if aggs.forall(_.resolved) &&
+      case a @ Aggregate(groups, aggs, child) if aggs.forall(_.resolved) &&
         groups.exists(_.isInstanceOf[UnresolvedOrdinal]) =>
         val newGroups = groups.map {
           case ordinal @ UnresolvedOrdinal(index) if index > 0 && index <= aggs.size =>
@@ -1267,7 +1267,7 @@ class Analyzer(
         // only equality correlated predicates.
         // It cannot be on a correlation path if the correlation has
         // non-equality correlated predicates.
-        case a @ Aggregate(grouping, expressions, child, _) =>
+        case a @ Aggregate(grouping, expressions, child) =>
           failOnOuterReference(a)
           failOnNonEqualCorrelatedPredicate(foundNonEqualCorrelatedPred, a)
 
@@ -1480,7 +1480,7 @@ class Analyzer(
   object ResolveAggregateFunctions extends Rule[LogicalPlan] {
     def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperators {
       case filter @ Filter(havingCondition,
-             aggregate @ Aggregate(grouping, originalAggExprs, child, _))
+             aggregate @ Aggregate(grouping, originalAggExprs, child))
           if aggregate.resolved =>
 
         // Try resolving the condition of the filter as though it is in the aggregate clause
@@ -1972,7 +1972,7 @@ class Analyzer(
 
       // Aggregate with Having clause. This rule works with an unresolved Aggregate because
       // a resolved Aggregate will not have Window Functions.
-      case f @ Filter(condition, a @ Aggregate(groupingExprs, aggregateExprs, child, _))
+      case f @ Filter(condition, a @ Aggregate(groupingExprs, aggregateExprs, child))
         if child.resolved &&
            hasWindowFunction(aggregateExprs) &&
            a.expressions.forall(_.resolved) =>
@@ -1990,7 +1990,7 @@ class Analyzer(
       case p: LogicalPlan if !p.childrenResolved => p
 
       // Aggregate without Having clause.
-      case a @ Aggregate(groupingExprs, aggregateExprs, child, _)
+      case a @ Aggregate(groupingExprs, aggregateExprs, child)
         if hasWindowFunction(aggregateExprs) &&
            a.expressions.forall(_.resolved) =>
         val (windowExpressions, aggregateExpressions) = extract(aggregateExprs)
@@ -2375,7 +2375,7 @@ object CleanupAliases extends Rule[LogicalPlan] {
         projectList.map(trimNonTopLevelAliases(_).asInstanceOf[NamedExpression])
       Project(cleanedProjectList, child)
 
-    case Aggregate(grouping, aggs, child, _) =>
+    case Aggregate(grouping, aggs, child) =>
       val cleanedAggs = aggs.map(trimNonTopLevelAliases(_).asInstanceOf[NamedExpression])
       Aggregate(grouping.map(trimAliases), cleanedAggs, child)
 

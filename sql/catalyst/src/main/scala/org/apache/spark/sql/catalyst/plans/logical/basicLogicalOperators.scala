@@ -538,7 +538,7 @@ case class Aggregate(
     child: LogicalPlan)
   extends UnaryNode {
 
-  lazy val stateful = child.isStreaming
+  val stateful = child.isStreaming
 
   override lazy val resolved: Boolean = {
     val hasWindowExpressions = aggregateExpressions.exists ( _.collect {
