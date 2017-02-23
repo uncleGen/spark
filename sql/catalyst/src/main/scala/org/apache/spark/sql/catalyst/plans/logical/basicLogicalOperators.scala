@@ -575,6 +575,12 @@ case class Aggregate(
   }
 }
 
+case class StatefulAggregate(
+    _groupingExpressions: Seq[Expression],
+    _aggregateExpressions: Seq[NamedExpression],
+    _child: LogicalPlan)
+  extends Aggregate(_groupingExpressions, _aggregateExpressions, _child)
+
 case class Window(
     windowExpressions: Seq[NamedExpression],
     partitionSpec: Seq[Expression],
