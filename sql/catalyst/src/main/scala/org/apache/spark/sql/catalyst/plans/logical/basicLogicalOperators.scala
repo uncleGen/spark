@@ -536,7 +536,7 @@ case class Aggregate(
     groupingExpressions: Seq[Expression],
     aggregateExpressions: Seq[NamedExpression],
     child: LogicalPlan,
-    var stateful: Boolean = false)
+    stateful: Boolean = false)
   extends UnaryNode {
 
   override lazy val resolved: Boolean = {

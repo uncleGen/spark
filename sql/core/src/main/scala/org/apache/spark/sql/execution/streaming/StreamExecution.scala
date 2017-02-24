@@ -513,9 +513,8 @@ class StreamExecution(
         }.getOrElse {
           LocalRelation(output)
         }
-//      case agg @ Aggregate(_, _, _, _) if agg.isStreaming =>
-//        agg.stateful = true
-//        agg
+      case Aggregate(a, b, c, _) =>
+        Aggregate(a, b, c, stateful = true)
     }
 
     // Rewire the plan to use the new attributes that were returned by the source.
@@ -679,6 +678,7 @@ class StreamExecution(
       "No physical plan. Waiting for data."
     } else {
       val explain = StreamingExplainCommand(lastExecution, extended = extended)
+      val a = 1
       sparkSession.sessionState.executePlan(explain).executedPlan.executeCollect()
         .map(_.getString(0)).mkString("\n")
     }
