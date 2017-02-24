@@ -328,7 +328,7 @@ object RewriteCorrelatedScalarSubquery extends Rule[LogicalPlan] {
    * subqueries.
    */
   def apply(plan: LogicalPlan): LogicalPlan = plan transform {
-    case a @ Aggregate(grouping, expressions, child, _) =>
+    case a @ Aggregate(grouping, expressions, child, stateful) =>
       val subqueries = ArrayBuffer.empty[ScalarSubquery]
       val newExpressions = expressions.map(extractCorrelatedScalarSubqueries(_, subqueries))
       if (subqueries.nonEmpty) {
@@ -338,7 +338,7 @@ object RewriteCorrelatedScalarSubquery extends Rule[LogicalPlan] {
         val newGrouping = grouping.map { e =>
           subqueries.find(_.semanticEquals(e)).map(_.plan.output.head).getOrElse(e)
         }
-        Aggregate(newGrouping, newExpressions, constructLeftJoins(child, subqueries))
+        Aggregate(newGrouping, newExpressions, constructLeftJoins(child, subqueries), stateful)
       } else {
         a
       }

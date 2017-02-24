@@ -230,8 +230,8 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case EventTimeWatermark(columnName, delay, child) =>
         EventTimeWatermarkExec(columnName, delay, planLater(child)) :: Nil
 
-      case PhysicalAggregation(namedGroupingExpressions, aggregateExpressions,
-        rewrittenResultExpressions, child, stateful) if stateful =>
+      case agg @ PhysicalAggregation(namedGroupingExpressions, aggregateExpressions,
+        rewrittenResultExpressions, child, stateful) if stateful || agg.isStreaming =>
 
         aggregate.AggUtils.planStreamingAggregation(
           namedGroupingExpressions,

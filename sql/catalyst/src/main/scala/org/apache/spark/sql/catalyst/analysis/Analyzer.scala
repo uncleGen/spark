@@ -239,8 +239,8 @@ class Analyzer(
       exprs.exists(_.find(_.isInstanceOf[UnresolvedAlias]).isDefined)
 
     def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperators {
-      case Aggregate(groups, aggs, child, _) if child.resolved && hasUnresolvedAlias(aggs) =>
-        Aggregate(groups, assignAliases(aggs), child)
+      case Aggregate(groups, aggs, child, stateful) if child.resolved && hasUnresolvedAlias(aggs) =>
+        Aggregate(groups, assignAliases(aggs), child, stateful)
 
       case g: GroupingSets if g.child.resolved && hasUnresolvedAlias(g.aggregations) =>
         g.copy(aggregations = assignAliases(g.aggregations))
@@ -406,7 +406,8 @@ class Analyzer(
         selectedGroupByExprs: Seq[Seq[Expression]],
         groupByExprs: Seq[Expression],
         aggregationExprs: Seq[NamedExpression],
-        child: LogicalPlan): LogicalPlan = {
+        child: LogicalPlan,
+        stateful: Boolean): LogicalPlan = {
       val gid = AttributeReference(VirtualColumn.groupingIdName, IntegerType, false)()
 
       // Expand works by setting grouping expressions to null as determined by the
@@ -421,7 +422,7 @@ class Analyzer(
       val aggregations = constructAggregateExprs(
         groupByExprs, aggregationExprs, groupByAliases, groupingAttrs, gid)
 
-      Aggregate(groupingAttrs, aggregations, expand)
+      Aggregate(groupingAttrs, aggregations, expand, stateful)
     }
 
     private def findGroupingExprs(plan: LogicalPlan): Seq[Expression] = {
@@ -447,15 +448,18 @@ class Analyzer(
           s"${VirtualColumn.hiveGroupingIdName} is deprecated; use grouping_id() instead")
 
       // Ensure group by expressions and aggregate expressions have been resolved.
-      case Aggregate(Seq(c @ Cube(groupByExprs)), aggregateExpressions, child, _)
+      case Aggregate(Seq(c @ Cube(groupByExprs)), aggregateExpressions, child, stateful)
         if (groupByExprs ++ aggregateExpressions).forall(_.resolved) =>
-        constructAggregate(cubeExprs(groupByExprs), groupByExprs, aggregateExpressions, child)
-      case Aggregate(Seq(r @ Rollup(groupByExprs)), aggregateExpressions, child, _)
+        constructAggregate(cubeExprs(groupByExprs), groupByExprs, aggregateExpressions, child,
+          stateful)
+      case Aggregate(Seq(r @ Rollup(groupByExprs)), aggregateExpressions, child, stateful)
         if (groupByExprs ++ aggregateExpressions).forall(_.resolved) =>
-        constructAggregate(rollupExprs(groupByExprs), groupByExprs, aggregateExpressions, child)
+        constructAggregate(rollupExprs(groupByExprs), groupByExprs, aggregateExpressions, child,
+          stateful)
       // Ensure all the expressions have been resolved.
       case x: GroupingSets if x.expressions.forall(_.resolved) =>
-        constructAggregate(x.selectedGroupByExprs, x.groupByExprs, x.aggregations, x.child)
+        // TODO:
+        constructAggregate(x.selectedGroupByExprs, x.groupByExprs, x.aggregations, x.child, false)
 
       // We should make sure all expressions in condition have been resolved.
       case f @ Filter(cond, child) if hasGroupingFunction(cond) && cond.resolved =>
@@ -2375,9 +2379,9 @@ object CleanupAliases extends Rule[LogicalPlan] {
         projectList.map(trimNonTopLevelAliases(_).asInstanceOf[NamedExpression])
       Project(cleanedProjectList, child)
 
-    case Aggregate(grouping, aggs, child, _) =>
+    case Aggregate(grouping, aggs, child, stateful) =>
       val cleanedAggs = aggs.map(trimNonTopLevelAliases(_).asInstanceOf[NamedExpression])
-      Aggregate(grouping.map(trimAliases), cleanedAggs, child)
+      Aggregate(grouping.map(trimAliases), cleanedAggs, child, stateful)
 
     case w @ Window(windowExprs, partitionSpec, orderSpec, child) =>
       val cleanedWindowExprs =

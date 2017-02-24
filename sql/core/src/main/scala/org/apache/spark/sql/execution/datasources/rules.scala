@@ -405,16 +405,6 @@ object HiveOnlyCheck extends (LogicalPlan => Unit) {
   }
 }
 
-//class StatefulAggregate(sparkSession: SparkSession) extends Rule[LogicalPlan] {
-//  override def apply(plan: LogicalPlan): LogicalPlan = {
-//    plan transform {
-//      case agg @ Aggregate(_, _, _, _) if agg.isStreaming =>
-//        agg.stateful = true
-//        agg
-//    }
-//  }
-//}
-
 /**
  * A rule to do various checks before inserting into or writing to a data source table.
  */

@@ -501,6 +501,7 @@ class StreamExecution(
     // A list of attributes that will need to be updated.
     var replacements = new ArrayBuffer[(Attribute, Attribute)]
     // Replace sources in the logical plan with data that has arrived since the last batch.
+    // TODO: rename
     val withNewSources = logicalPlan transform {
       case StreamingExecutionRelation(source, output) =>
         newData.get(source).map { data =>
@@ -678,7 +679,6 @@ class StreamExecution(
       "No physical plan. Waiting for data."
     } else {
       val explain = StreamingExplainCommand(lastExecution, extended = extended)
-      val a = 1
       sparkSession.sessionState.executePlan(explain).executedPlan.executeCollect()
         .map(_.getString(0)).mkString("\n")
     }
