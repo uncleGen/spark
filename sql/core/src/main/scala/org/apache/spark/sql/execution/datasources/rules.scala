@@ -405,6 +405,16 @@ object HiveOnlyCheck extends (LogicalPlan => Unit) {
   }
 }
 
+object StatefulAggregate extends (LogicalPlan => Unit) {
+  def apply(plan: LogicalPlan): Unit = {
+    plan foreach {
+      case agg @ Aggregate(_, _, _, _) if agg.isStreaming =>
+        agg.stateful = true
+      case _ => // OK
+    }
+  }
+}
+
 /**
  * A rule to do various checks before inserting into or writing to a data source table.
  */

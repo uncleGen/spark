@@ -187,7 +187,7 @@ object RewriteCorrelatedScalarSubquery extends Rule[LogicalPlan] {
           projectList.map(ne => (ne.exprId, evalExpr(ne, bindings))).toMap
         }
 
-      case Aggregate(_, aggExprs, _) =>
+      case Aggregate(_, aggExprs, _, _) =>
         // Some of the expressions under the Aggregate node are the join columns
         // for joining with the outer query block. Fill those expressions in with
         // nulls and statically evaluate the remainder.
@@ -328,7 +328,7 @@ object RewriteCorrelatedScalarSubquery extends Rule[LogicalPlan] {
    * subqueries.
    */
   def apply(plan: LogicalPlan): LogicalPlan = plan transform {
-    case a @ Aggregate(grouping, expressions, child) =>
+    case a @ Aggregate(grouping, expressions, child, _) =>
       val subqueries = ArrayBuffer.empty[ScalarSubquery]
       val newExpressions = expressions.map(extractCorrelatedScalarSubqueries(_, subqueries))
       if (subqueries.nonEmpty) {

@@ -535,10 +535,9 @@ case class Range(
 case class Aggregate(
     groupingExpressions: Seq[Expression],
     aggregateExpressions: Seq[NamedExpression],
-    child: LogicalPlan)
+    child: LogicalPlan,
+    var stateful: Boolean = false)
   extends UnaryNode {
-
-  val stateful = child.isStreaming
 
   override lazy val resolved: Boolean = {
     val hasWindowExpressions = aggregateExpressions.exists ( _.collect {

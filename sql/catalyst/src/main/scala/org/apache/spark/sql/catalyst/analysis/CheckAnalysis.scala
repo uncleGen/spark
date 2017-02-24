@@ -18,10 +18,8 @@
 package org.apache.spark.sql.catalyst.analysis
 
 import org.apache.spark.sql.AnalysisException
-import org.apache.spark.sql.catalyst.catalog.SimpleCatalogRelation
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
-import org.apache.spark.sql.catalyst.plans.UsingJoin
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.types._
 
@@ -208,7 +206,7 @@ trait CheckAnalysis extends PredicateHelper {
               case e if PredicateSubquery.hasNullAwarePredicateWithinNot(e) =>
                 failAnalysis(s"Null-aware predicate sub-queries cannot be used in nested" +
                   s" conditions: $e")
-              case e =>unsu
+              case e =>
             }
 
           case j @ Join(_, _, _, Some(condition)) if condition.dataType != BooleanType =>
@@ -216,7 +214,7 @@ trait CheckAnalysis extends PredicateHelper {
               s"join condition '${condition.sql}' " +
                 s"of type ${condition.dataType.simpleString} is not a boolean.")
 
-          case Aggregate(groupingExprs, aggregateExprs, child) =>
+          case Aggregate(groupingExprs, aggregateExprs, child, _) =>
             def checkValidAggregateExpression(expr: Expression): Unit = expr match {
               case aggExpr: AggregateExpression =>
                 aggExpr.aggregateFunction.children.foreach { child =>

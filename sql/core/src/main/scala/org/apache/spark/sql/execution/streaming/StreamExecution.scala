@@ -513,6 +513,9 @@ class StreamExecution(
         }.getOrElse {
           LocalRelation(output)
         }
+//      case agg @ Aggregate(_, _, _, _) if agg.isStreaming =>
+//        agg.stateful = true
+//        agg
     }
 
     // Rewire the plan to use the new attributes that were returned by the source.

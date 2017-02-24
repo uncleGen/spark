@@ -122,7 +122,7 @@ private[sql] class SessionState(sparkSession: SparkSession) {
         PreprocessTableInsertion(conf) ::
         DataSourceAnalysis(conf) :: Nil
 
-      override val extendedCheckRules = Seq(PreWriteCheck, HiveOnlyCheck)
+      override val extendedCheckRules = Seq(PreWriteCheck, HiveOnlyCheck, StatefulAggregate)
     }
   }
 

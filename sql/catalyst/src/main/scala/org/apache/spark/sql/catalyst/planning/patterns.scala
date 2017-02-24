@@ -199,11 +199,10 @@ object ExtractFiltersAndInnerJoins extends PredicateHelper {
 object PhysicalAggregation {
   // groupingExpressions, aggregateExpressions, resultExpressions, child
   type ReturnType =
-    (Seq[NamedExpression], Seq[AggregateExpression], Seq[NamedExpression], LogicalPlan)
+    (Seq[NamedExpression], Seq[AggregateExpression], Seq[NamedExpression], LogicalPlan, Boolean)
 
   def unapply(a: Any): Option[ReturnType] = a match {
-    case agg @ logical.Aggregate(groupingExpressions, resultExpressions, child)
-      if agg.isStreaming =>
+    case agg @ logical.Aggregate(groupingExpressions, resultExpressions, child, stateful) =>
       // A single aggregate expression might appear multiple times in resultExpressions.
       // In order to avoid evaluating an individual aggregate function multiple times, we'll
       // build a set of the distinct aggregate expressions and build a function which can
@@ -253,7 +252,8 @@ object PhysicalAggregation {
         namedGroupingExpressions.map(_._2),
         aggregateExpressions,
         rewrittenResultExpressions,
-        child))
+        child,
+        stateful))
 
     case _ => None
   }
