@@ -526,7 +526,9 @@ class StreamExecution(
           replacements ++= output.zip(newPlan.output)
           newPlan
         }.getOrElse {
-          LocalRelation(output)
+          new LocalRelation(output) {
+            override def isStreaming = true
+          }
         }
     }
 

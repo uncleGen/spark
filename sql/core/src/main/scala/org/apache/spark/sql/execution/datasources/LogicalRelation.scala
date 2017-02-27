@@ -34,7 +34,8 @@ import org.apache.spark.util.Utils
 case class LogicalRelation(
     relation: BaseRelation,
     expectedOutputAttributes: Option[Seq[Attribute]] = None,
-    catalogTable: Option[CatalogTable] = None)
+    catalogTable: Option[CatalogTable] = None,
+    var dataFromStreaming: Boolean = false)
   extends LeafNode with MultiInstanceRelation {
 
   override val output: Seq[AttributeReference] = {
@@ -53,7 +54,8 @@ case class LogicalRelation(
 
   // Logical Relations are distinct if they have different output for the sake of transformations.
   override def equals(other: Any): Boolean = other match {
-    case l @ LogicalRelation(otherRelation, _, _) => relation == otherRelation && output == l.output
+    case l @ LogicalRelation(otherRelation, _, _, _) =>
+      relation == otherRelation && output == l.output
     case _ => false
   }
 
@@ -63,10 +65,12 @@ case class LogicalRelation(
 
   override def sameResult(otherPlan: LogicalPlan): Boolean = {
     otherPlan.canonicalized match {
-      case LogicalRelation(otherRelation, _, _) => relation == otherRelation
+      case LogicalRelation(otherRelation, _, _, _) => relation == otherRelation
       case _ => false
     }
   }
+
+  override def isStreaming: Boolean = dataFromStreaming
 
   // When comparing two LogicalRelations from within LogicalPlan.sameResult, we only need
   // LogicalRelation.cleanArgs to return Seq(relation), since expectedOutputAttribute's
